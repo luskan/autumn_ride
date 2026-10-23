@@ -1,6 +1,16 @@
-// On-screen controls for touch screens: steering pad (left thumb), pedals (right thumb)
-// and small buttons for autopilot, camera and pause. Uses pointer events, so several
-// fingers work at once (e.g. gas + steering).
+// Roblox-style touch controls. Left half of the screen: a dynamic thumbstick that appears
+// under the thumb (up = gas, down = brake, sideways = steering, all analog). Right half:
+// drag to orbit the camera, pinch with two fingers to zoom. Small buttons on top:
+// autopilot, camera and pause.
+
+const STICK_R = 58; // px of thumb travel for full deflection
+const DEAD = 0.12;
+
+// dead zone, then linear up to 1
+const shape = (v) => {
+  const a = Math.abs(v);
+  return a < DEAD ? 0 : Math.sign(v) * Math.min(1, (a - DEAD) / (1 - DEAD));
+};
 
 const capture = (el, id) => {
   try {
@@ -10,28 +20,6 @@ const capture = (el, id) => {
   }
 };
 
-// button held down while a finger rests on it
-function bindHold(el, down, up) {
-  let pointer = null;
-  const end = (e) => {
-    if (e.pointerId !== pointer) return;
-    pointer = null;
-    el.classList.remove('active');
-    up();
-  };
-  el.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    if (pointer !== null) return;
-    pointer = e.pointerId;
-    capture(el, pointer);
-    el.classList.add('active');
-    down();
-  });
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
-  el.addEventListener('lostpointercapture', end);
-}
-
 function bindTap(el, action) {
   el.addEventListener('pointerdown', (e) => e.preventDefault());
   el.addEventListener('click', (e) => {
@@ -40,53 +28,97 @@ function bindTap(el, action) {
   });
 }
 
-export function setupTouchControls({ press, release, toggleAutopilot, nextCamera, pause }) {
+export function setupTouchControls({ drive, release, toggleAutopilot, nextCamera, pause, orbit, zoom, orbitEnd }) {
   const root = document.getElementById('touch-controls');
+  const zone = document.getElementById('touch-zone');
+  const base = document.getElementById('stick');
+  const knob = document.getElementById('stick-knob');
   root.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  for (const el of root.querySelectorAll('[data-key]')) {
-    bindHold(el, () => press(el.dataset.key), () => release(el.dataset.key));
-  }
+  let stick = null; // { id, cx, cy } while a thumb drives
+  const cams = new Map(); // camera fingers: pointerId -> last position
+  let pinch = null;
 
-  // steering: the half under the finger counts, so the thumb can slide from left to right
-  const pad = document.getElementById('steer-pad');
-  const halves = { left: pad.querySelector('[data-side="left"]'), right: pad.querySelector('[data-side="right"]') };
-  let pointer = null;
-  let side = null;
-  const setSide = (next) => {
-    if (next === side) return;
-    if (side) {
-      release(side);
-      halves[side].classList.remove('active');
-    }
-    side = next;
-    if (side) {
-      press(side);
-      halves[side].classList.add('active');
-    }
+  const placeStick = (cx, cy, dx, dy) => {
+    base.style.left = `${cx}px`;
+    base.style.top = `${cy}px`;
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
   };
-  const sideAt = (e) => {
-    const r = pad.getBoundingClientRect();
-    return e.clientX < r.left + r.width / 2 ? 'left' : 'right';
+  const resetStick = () => {
+    base.classList.remove('active');
+    base.style.left = base.style.top = '';
+    knob.style.transform = '';
   };
-  pad.addEventListener('pointerdown', (e) => {
+
+  const moveStick = (e) => {
+    let dx = e.clientX - stick.cx;
+    let dy = e.clientY - stick.cy;
+    const len = Math.hypot(dx, dy);
+    if (len > STICK_R) {
+      // like Roblox: the base follows a thumb that slides too far
+      const k = 1 - STICK_R / len;
+      stick.cx += dx * k;
+      stick.cy += dy * k;
+      dx = e.clientX - stick.cx;
+      dy = e.clientY - stick.cy;
+    }
+    placeStick(stick.cx, stick.cy, dx, dy);
+    const forward = shape(-dy / STICK_R);
+    drive({ throttle: Math.max(0, forward), brake: Math.max(0, -forward), steer: shape(dx / STICK_R) });
+  };
+
+  const pinchDistance = () => {
+    const [a, b] = [...cams.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+
+  zone.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    if (pointer !== null) return;
-    pointer = e.pointerId;
-    capture(pad, pointer);
-    setSide(sideAt(e));
+    capture(zone, e.pointerId);
+    if (!stick && e.clientX < window.innerWidth / 2) {
+      stick = { id: e.pointerId, cx: e.clientX, cy: e.clientY };
+      base.classList.add('active');
+      moveStick(e);
+    } else {
+      cams.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pinch = cams.size === 2 ? pinchDistance() : null;
+    }
   });
-  pad.addEventListener('pointermove', (e) => {
-    if (e.pointerId === pointer) setSide(sideAt(e));
+
+  zone.addEventListener('pointermove', (e) => {
+    if (stick && e.pointerId === stick.id) {
+      moveStick(e);
+      return;
+    }
+    const p = cams.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    if (cams.size >= 2) {
+      const d = pinchDistance();
+      if (pinch) zoom(pinch / d);
+      pinch = d;
+    } else {
+      orbit(dx, dy);
+    }
   });
+
   const end = (e) => {
-    if (e.pointerId !== pointer) return;
-    pointer = null;
-    setSide(null);
+    if (stick && e.pointerId === stick.id) {
+      stick = null;
+      resetStick();
+      release();
+      return;
+    }
+    if (cams.delete(e.pointerId)) {
+      pinch = null;
+      if (cams.size === 0) orbitEnd();
+    }
   };
-  pad.addEventListener('pointerup', end);
-  pad.addEventListener('pointercancel', end);
-  pad.addEventListener('lostpointercapture', end);
+  zone.addEventListener('pointerup', end);
+  zone.addEventListener('pointercancel', end);
+  zone.addEventListener('lostpointercapture', end);
 
   const autoBtn = document.getElementById('tc-auto');
   bindTap(autoBtn, toggleAutopilot);
@@ -103,4 +135,35 @@ export function setupTouchControls({ press, release, toggleAutopilot, nextCamera
       autoBtn.classList.toggle('on', autopilot);
     },
   };
+}
+
+// Desktop counterpart: drag with the mouse to orbit the camera, wheel to zoom.
+export function setupMouseCamera(canvas, { orbit, zoom, orbitEnd }) {
+  let dragging = null;
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    dragging = { x: e.clientX, y: e.clientY };
+    capture(canvas, e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging || e.pointerType !== 'mouse') return;
+    orbit(e.clientX - dragging.x, e.clientY - dragging.y);
+    dragging = { x: e.clientX, y: e.clientY };
+  });
+  const end = (e) => {
+    if (!dragging || e.pointerType !== 'mouse') return;
+    dragging = null;
+    orbitEnd();
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      zoom(Math.exp(e.deltaY * 0.0012));
+    },
+    { passive: false },
+  );
 }

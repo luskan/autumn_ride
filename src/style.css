@@ -626,8 +626,7 @@ body.touch .keys-hint {
   display: none;
 }
 
-#touch-controls button,
-#touch-controls .tc-btn {
+#touch-controls button {
   pointer-events: auto;
   touch-action: none;
   -webkit-touch-callout: none;
@@ -635,7 +634,6 @@ body.touch .keys-hint {
   user-select: none;
 }
 
-.tc-btn,
 .tc-small {
   display: flex;
   align-items: center;
@@ -648,7 +646,6 @@ body.touch .keys-hint {
   transition: background 0.08s, transform 0.08s;
 }
 
-.tc-btn svg,
 .tc-small svg {
   fill: none;
   stroke: var(--cream);
@@ -657,10 +654,6 @@ body.touch .keys-hint {
   stroke-linejoin: round;
 }
 
-.tc-btn.active {
-  background: rgba(243, 154, 46, 0.6);
-  transform: scale(0.96);
-}
 
 .tc-top {
   position: absolute;
@@ -702,58 +695,14 @@ body.touch .keys-hint {
   border-color: rgba(120, 220, 160, 0.8);
 }
 
-#steer-pad {
-  position: absolute;
-  left: var(--safe-l);
-  bottom: var(--safe-b);
-  display: flex;
-  gap: 12px;
-  pointer-events: auto;
-  touch-action: none;
-}
 
-#steer-pad .tc-btn {
-  width: 84px;
-  height: 84px;
-  border-radius: 22px;
-}
 
-#steer-pad .tc-btn svg {
-  width: 40px;
-  height: 40px;
-}
 
-.pedals {
-  position: absolute;
-  right: var(--safe-r);
-  bottom: var(--safe-b);
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-}
 
-.pedal {
-  flex-direction: column;
-  gap: 2px;
-  width: 78px;
-  height: 78px;
-  padding: 0;
-  border-radius: 20px;
-  font: 700 12px var(--font);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
 
-.pedal svg {
-  width: 32px;
-  height: 32px;
-}
 
-.pedal.gas {
-  height: 110px;
-}
 
-/* the dial would collide with the pedals: a compact speed readout at the bottom center */
+/* touch screens: a compact speed readout at the bottom center leaves room for the thumbs */
 body.touch .speedo {
   left: 50%;
   right: auto;
@@ -785,22 +734,53 @@ body.touch #auto-badge {
 }
 
 @media (max-height: 400px) {
-  #steer-pad .tc-btn {
-    width: 72px;
-    height: 72px;
-  }
-
-  .pedal {
-    width: 70px;
-    height: 70px;
-  }
-
-  .pedal.gas {
-    height: 96px;
-  }
-
   body.touch .touch-help {
     margin-bottom: 10px;
     font-size: 13px;
   }
+}
+
+/* Roblox-style thumbstick (left half) and camera drag area (right half) */
+#touch-zone {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+#stick {
+  position: absolute;
+  left: calc(var(--safe-l) + 70px);
+  top: calc(100% - var(--safe-b) - 70px);
+  width: 124px;
+  height: 124px;
+  margin: -62px 0 0 -62px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 244, 226, 0.45);
+  background: rgba(30, 18, 10, 0.28);
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+#stick.active {
+  opacity: 0.95;
+  transition: none;
+}
+
+#stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border-radius: 50%;
+  background: rgba(255, 244, 226, 0.85);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+}
+
+body.touch .tc-top {
+  z-index: 2;
 }

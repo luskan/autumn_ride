@@ -64,6 +64,8 @@
       <div id="toast"></div>
 
       <div id="touch-controls">
+        <div id="touch-zone" aria-label="Lewa strona: joystick jazdy, prawa strona: obrót kamery"></div>
+        <div id="stick" aria-hidden="true"><div id="stick-knob"></div></div>
         <div class="tc-top">
           <button class="tc-small" id="tc-auto" aria-label="Autopilot">AUTO</button>
           <button class="tc-small" id="tc-cam" aria-label="Zmiana kamery">
@@ -71,18 +73,6 @@
           </button>
           <button class="tc-small" id="tc-pause" aria-label="Pauza">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg>
-          </button>
-        </div>
-        <div id="steer-pad" aria-label="Skręt">
-          <span class="tc-btn" data-side="left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg></span>
-          <span class="tc-btn" data-side="right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg></span>
-        </div>
-        <div class="pedals">
-          <button class="tc-btn pedal" data-key="down" aria-label="Hamulec">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg><span>Hamuj</span>
-          </button>
-          <button class="tc-btn pedal gas" data-key="up" aria-label="Gaz">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg><span>Gaz</span>
           </button>
         </div>
       </div>
@@ -113,8 +103,10 @@
           <div>Zmiana kamery</div>
           <div class="keys"><kbd>M</kbd><kbd>P</kbd></div>
           <div>Dźwięk / pauza</div>
+          <div class="keys"><kbd>Mysz</kbd></div>
+          <div>Przeciągnij - obrót kamery, kółko - zoom</div>
         </div>
-        <p class="touch-help">Lewy kciuk: skręt. Prawy kciuk: gaz i hamulec. U góry: autopilot (trzyma prędkość i wyprzedza), kamera i pauza.</p>
+        <p class="touch-help">Lewy kciuk: joystick - w górę gaz, w dół hamulec, na boki skręt. Prawa strona ekranu: przeciągnij, aby obrócić kamerę, dwa palce przybliżają. U góry: autopilot, kamera i pauza.</p>
         <p class="note">Jedziesz tylko po drodze - barierki trzymają auto na jezdni. Stłuczki nie uszkadzają samochodu.</p>
         <button class="btn" id="start-btn">Ruszaj</button>
         <div class="hint">albo naciśnij Enter / Spację</div>

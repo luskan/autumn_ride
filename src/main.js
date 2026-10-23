@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import './style.css';
 import { WORLD, PLAYER, KMH, COLORS } from './config.js';
-import { nextFrame, damp } from './util.js';
+import { nextFrame, damp, clamp } from './util.js';
 import { buildTrack } from './track.js';
 import { Terrain } from './terrain.js';
 import * as TX from './textures.js';
@@ -15,7 +15,7 @@ import { Autopilot } from './autopilot.js';
 import { Leaves, Sparks } from './effects.js';
 import { AudioFx } from './audio.js';
 import { Hud } from './hud.js';
-import { setupTouchControls } from './touch.js';
+import { setupTouchControls, setupMouseCamera } from './touch.js';
 import { shaderTime } from './materials.js';
 
 patchFog();
@@ -156,7 +156,7 @@ async function init() {
   menuPilot.engage(player, 70 / KMH);
 
   world = { track, terrain, vegetation, player, traffic, leaves, sparks, sky, lights, signs, villages, pilot, menuPilot };
-  window.__game = { THREE, scene, camera, renderer, state, input, world, setInput, startGame, setCamera, setPaused, simulate, toggleAutopilot };
+  window.__game = { THREE, scene, camera, renderer, state, input, world, setInput, startGame, setCamera, setPaused, simulate, toggleAutopilot, orbitCam };
 
   await step('Rozgrzewanie silnika...', 0.95);
   updateCamera(0, true);
@@ -283,13 +283,50 @@ function release(k) {
   input[k] = false;
 }
 
+// camera orbit around the car (drag on touch screens or with the mouse), returns behind the car when let go
+const orbitCam = { yaw: 0, pitch: 0, zoom: 1, dragging: false, idle: 0 };
+const cameraControls = {
+  orbit(dx, dy) {
+    orbitCam.yaw -= dx * 0.008;
+    orbitCam.pitch = clamp(orbitCam.pitch + dy * 0.005, -0.35, 0.9);
+    orbitCam.dragging = true;
+    orbitCam.idle = 0;
+  },
+  zoom(k) {
+    orbitCam.zoom = clamp(orbitCam.zoom * k, 0.55, 2.2);
+  },
+  orbitEnd() {
+    orbitCam.dragging = false;
+  },
+};
+
+// thumbstick: analog throttle / brake / steering
+function drive({ throttle, brake, steer }) {
+  if (state.mode !== 'play') return;
+  input.throttle = throttle;
+  input.brake = brake;
+  input.steer = steer;
+  if (Math.abs(steer) > 0.35 && world.pilot.active) {
+    world.pilot.disengage();
+    hud.toast('Autopilot wyłączony - przejmujesz kierownicę');
+  }
+}
+
+function releaseStick() {
+  delete input.throttle;
+  delete input.brake;
+  delete input.steer;
+}
+
 const touch = setupTouchControls({
-  press,
-  release,
+  drive,
+  release: releaseStick,
   toggleAutopilot,
   nextCamera: () => setCamera(state.camMode + 1),
   pause: () => setPaused(true),
+  ...cameraControls,
 });
+setupMouseCamera(canvas, cameraControls);
 // touch controls on touch screens; a laptop with a touchscreen gets them on the first touch
 const useTouchControls = () => document.body.classList.add('touch');
 if (touchDevice) useTouchControls();
@@ -342,8 +379,9 @@ function driverInput(dt) {
   const { player, pilot, menuPilot } = world;
   if (state.mode !== 'play') return menuPilot.update(dt, player);
   if (!pilot.active) return input;
-  if (input.up) pilot.adjust(AUTO_RATE * dt);
-  if (input.down) pilot.adjust(-AUTO_RATE * dt);
+  // keys or the thumbstick pushed up / down change the cruise speed
+  if (input.up || input.throttle > 0.5) pilot.adjust(AUTO_RATE * dt);
+  if (input.down || input.brake > 0.5) pilot.adjust(-AUTO_RATE * dt);
   return pilot.update(dt, player);
 }
 
@@ -384,6 +422,34 @@ const camPos = new THREE.Vector3();
 const camLook = new THREE.Vector3();
 const tmpV = new THREE.Vector3();
 
+const camDesired = new THREE.Vector3();
+const camTarget = new THREE.Vector3();
+const camOffset = new THREE.Vector3();
+const carCenter = new THREE.Vector3();
+
+// rotate / tilt / scale the chase offset around the car
+function applyOrbit(dt, desired, look, car) {
+  const o = orbitCam;
+  if (!o.dragging) {
+    o.idle += dt;
+    if (o.idle > 1) {
+      o.yaw = damp(o.yaw, 0, 2.5, dt);
+      o.pitch = damp(o.pitch, 0, 2.5, dt);
+    }
+  }
+  o.yaw = Math.atan2(Math.sin(o.yaw), Math.cos(o.yaw));
+  if (Math.abs(o.yaw) < 1e-3 && Math.abs(o.pitch) < 1e-3 && Math.abs(o.zoom - 1) < 1e-3) return;
+  camOffset.subVectors(desired, car);
+  const len = camOffset.length() * o.zoom;
+  const el = clamp(Math.atan2(camOffset.y, Math.hypot(camOffset.x, camOffset.z)) + o.pitch, 0.08, 1.35);
+  const az = Math.atan2(camOffset.z, camOffset.x) + o.yaw;
+  desired.set(car.x + Math.cos(az) * Math.cos(el) * len, car.y + Math.sin(el) * len, car.z + Math.sin(az) * Math.cos(el) * len);
+  // when looking around, aim at the car instead of the road ahead
+  carCenter.copy(car);
+  carCenter.y += 1.1;
+  look.lerp(carCenter, Math.min(1, (Math.abs(o.yaw) + Math.abs(o.pitch)) / 0.5));
+}
+
 function updateCamera(dt, snap = false) {
   const { player, track } = world;
   if (state.debugCam) {
@@ -394,13 +460,14 @@ function updateCamera(dt, snap = false) {
   }
   const md = CAMERAS[state.camMode];
   track.frameAt(player.s - md.back, camF);
-  const desired = tmpV.copy(camF.pos).addScaledVector(camF.R, player.d * 0.85);
+  const desired = camDesired.copy(camF.pos).addScaledVector(camF.R, player.d * 0.85);
   desired.y += md.up;
+  track.frameAt(player.s + md.ahead, camF);
+  const look = camTarget.copy(camF.pos).addScaledVector(camF.R, player.d * 0.7);
+  look.y += md.lookUp;
+  applyOrbit(dt, desired, look, player.group.position);
   if (snap) camPos.copy(desired);
   else camPos.lerp(desired, 1 - Math.exp(-7 * dt));
-  track.frameAt(player.s + md.ahead, camF);
-  const look = tmpV.copy(camF.pos).addScaledVector(camF.R, player.d * 0.7);
-  look.y += md.lookUp;
   if (snap) camLook.copy(look);
   else camLook.lerp(look, 1 - Math.exp(-9 * dt));
 

@@ -438,26 +438,45 @@ try {
         const G = window.__game;
         return { v: G.world.player.v, d: G.world.player.d, input: { ...G.input }, pilot: G.world.pilot.active, mode: G.state.mode };
       });
-      const gas = { ...(await at('.pedal.gas')), id: 1 };
-      const left = { ...(await at('#steer-pad', 0.25)), id: 2 };
-      await touch('touchStart', [gas]);
+      // Roblox-style thumbstick: put the thumb down on the left half, push up and to the left
+      const { w: vw, h: vh } = await mp.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+      const thumb = { x: vw * 0.2, y: vh * 0.7, id: 1 };
+      await touch('touchStart', [thumb]);
+      await touch('touchMove', [{ ...thumb, y: thumb.y - 60 }]);
       await mp.waitForTimeout(1500);
-      await touch('touchStart', [gas, left]);
+      const t0 = await tstate();
+      await touch('touchMove', [{ ...thumb, x: thumb.x - 45, y: thumb.y - 45 }]);
       await mp.waitForTimeout(1000);
       const t1 = await tstate();
+      // a second finger on the right half orbits the camera meanwhile
+      const yaw0 = await mp.evaluate(() => window.__game.orbitCam.yaw);
+      const camFinger = { x: vw * 0.75, y: vh * 0.5, id: 2 };
+      await touch('touchStart', [{ ...thumb, x: thumb.x - 45, y: thumb.y - 45 }, camFinger]);
+      await touch('touchMove', [{ ...thumb, x: thumb.x - 45, y: thumb.y - 45 }, { ...camFinger, x: camFinger.x - 120 }]);
+      // pointer moves are delivered with the next frame, which can take a while under load
+      await mp.waitForFunction((y0) => Math.abs(window.__game.orbitCam.yaw - y0) > 0.5, yaw0, { timeout: 3000 }).catch(() => {});
+      const yaw1 = await mp.evaluate(() => window.__game.orbitCam.yaw);
+      await mp.screenshot({ path: `${OUT}/10-mobile-thumbstick.png` });
       await touch('touchEnd', []);
       await mp.waitForTimeout(100);
       const t2 = await tstate();
-      check(`${name}: touch gas + steering work together and release cleanly`, t1.input.up && t1.input.left && t1.v > 8 && t1.d < 1.5 && !t2.input.up && !t2.input.left, `${(t1.v * 3.6).toFixed(0)} km/h, d ${t1.d.toFixed(2)}`);
+      check(`${name}: thumbstick up accelerates, diagonal steers (analog)`, t0.input.throttle > 0.9 && t0.v > 8 && t1.input.steer < -0.5 && t1.input.throttle > 0.5 && t1.d < 1.5, `${(t0.v * 3.6).toFixed(0)} km/h, steer ${t1.input.steer?.toFixed(2)}, d ${t1.d.toFixed(2)}`);
+      check(`${name}: releasing the thumbstick clears the input`, t2.input.throttle === undefined && t2.input.steer === undefined);
+      check(`${name}: dragging on the right half orbits the camera`, Math.abs(yaw1 - yaw0) > 0.5, `yaw ${yaw0.toFixed(2)} -> ${yaw1.toFixed(2)}`);
+      await mp.waitForTimeout(3500);
+      const yaw2 = await mp.evaluate(() => window.__game.orbitCam.yaw);
+      check(`${name}: the camera swings back behind the car when let go`, Math.abs(yaw2) < 0.1, `yaw ${yaw2.toFixed(2)}`);
+      const left = { x: vw * 0.2, y: vh * 0.7, id: 3 };
       await mp.evaluate(() => { const p = window.__game.world.player; p.v = 22; p.d = 1.85; p.yaw = 0; });
       await mp.tap('#tc-auto');
       await mp.waitForTimeout(200);
       const t3 = await tstate();
       await touch('touchStart', [left]);
+      await touch('touchMove', [{ ...left, x: left.x + 50 }]);
       await mp.waitForTimeout(150);
       await touch('touchEnd', []);
       const t4 = await tstate();
-      check(`${name}: AUTO button engages the autopilot, steering pad takes over`, t3.pilot && !t4.pilot);
+      check(`${name}: AUTO button engages the autopilot, steering with the thumbstick takes over`, t3.pilot && !t4.pilot);
       await mp.tap('#tc-pause');
       await mp.waitForTimeout(150);
       const paused = (await tstate()).mode === 'pause';
@@ -469,6 +488,16 @@ try {
   }
   const noTouchOnDesktop = await g(() => getComputedStyle(document.getElementById('touch-controls')).display === 'none');
   check('desktop shows no touch controls', noTouchOnDesktop);
+  const yawD0 = await g(() => window.__game.orbitCam.yaw);
+  await page.mouse.move(700, 400);
+  await page.mouse.down();
+  await page.mouse.move(560, 380, { steps: 6 });
+  const yawD1 = await g(() => window.__game.orbitCam.yaw);
+  await page.mouse.up();
+  await page.mouse.wheel(0, 400);
+  await wait(100);
+  const zoomD = await g(() => window.__game.orbitCam.zoom);
+  check('desktop: mouse drag orbits the camera, the wheel zooms', Math.abs(yawD1 - yawD0) > 0.5 && zoomD > 1.2, `yaw ${yawD0.toFixed(2)} -> ${yawD1.toFixed(2)}, zoom ${zoomD.toFixed(2)}`);
 
   const relevant = errors.filter((e) => !/GPU stall|ReadPixels|Automatic fallback to software WebGL/.test(e));
   check('no console errors', relevant.length === 0, relevant.slice(0, 5).join(' | '));
