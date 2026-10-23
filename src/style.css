@@ -784,3 +784,57 @@ body.touch #auto-badge {
 body.touch .tc-top {
   z-index: 2;
 }
+
+/* ---------- portrait phones ---------- */
+@media (orientation: portrait) and (max-width: 600px) {
+  .panel {
+    gap: 8px;
+    max-width: calc(50% - 20px);
+    padding: 6px 9px;
+    border-radius: 12px;
+  }
+
+  .stat {
+    min-width: 0;
+  }
+
+  .stat .label {
+    font-size: 8.5px;
+    letter-spacing: 0.06em;
+  }
+
+  .stat .value {
+    font-size: 16px;
+  }
+
+  /* small buttons go under the stats */
+  .tc-top {
+    top: calc(var(--safe-t) + 58px);
+  }
+
+  #toast {
+    top: calc(var(--safe-t) + 116px);
+    max-width: calc(100% - 32px);
+    font-size: 14px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  /* the joystick lives bottom left, so speed and autopilot move to the right */
+  body.touch .speedo {
+    left: auto;
+    right: var(--safe-r);
+    transform: none;
+  }
+
+  body.touch #auto-badge {
+    left: auto;
+    right: var(--safe-r);
+    transform: none;
+    bottom: calc(var(--safe-b) + 52px);
+  }
+
+  #auto-badge #auto-state {
+    display: none;
+  }
+}

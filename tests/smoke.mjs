@@ -486,6 +486,45 @@ try {
     }
     await ctx.close();
   }
+  // ---- phone in portrait: HUD pieces must not overlap, the view must not shrink to a slit ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 360, height: 643 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+    const pp = await ctx.newPage();
+    await pp.goto(url);
+    await pp.waitForFunction(() => window.__game && window.__game.state.mode === 'menu', null, { timeout: 90000 });
+    const menuFits = await pp.evaluate(() => {
+      const b = document.querySelector('#start .card').getBoundingClientRect();
+      return b.top >= 0 && b.bottom <= innerHeight;
+    });
+    await pp.tap('#start-btn');
+    await pp.waitForTimeout(300);
+    await pp.evaluate(() => { window.__game.world.player.v = 22; window.__game.toggleAutopilot(); });
+    await pp.waitForTimeout(1000);
+    const lay = await pp.evaluate(() => {
+      const box = (sel) => {
+        const e = document.querySelector(sel);
+        if (!e || getComputedStyle(e).display === 'none' || e.classList.contains('hidden')) return null;
+        const b = e.getBoundingClientRect();
+        return { l: b.left, t: b.top, r: b.right, b: b.bottom };
+      };
+      const E = { statsL: box('.stats-left'), statsR: box('.stats-right'), buttons: box('.tc-top'), speed: box('.speedo'), auto: box('#auto-badge'), stick: box('#stick'), toast: box('#toast.show') };
+      const keys = Object.keys(E).filter((k) => E[k]);
+      const over = [];
+      for (let i = 0; i < keys.length; i++) {
+        for (let j = i + 1; j < keys.length; j++) {
+          const a = E[keys[i]], b = E[keys[j]];
+          if (a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5) over.push(`${keys[i]}/${keys[j]}`);
+        }
+      }
+      const outside = keys.filter((k) => E[k].l < 0 || E[k].t < 0 || E[k].r > innerWidth || E[k].b > innerHeight);
+      return { over, outside, fov: window.__game.camera.fov };
+    });
+    await pp.screenshot({ path: `${OUT}/11-portrait.png` });
+    check('portrait phone: start menu fits on screen', menuFits);
+    check('portrait phone: HUD does not overlap and stays on screen', lay.over.length === 0 && lay.outside.length === 0, [...lay.over, ...lay.outside].join(', '));
+    check('portrait phone: camera widens its view', lay.fov > 75, `fov ${lay.fov.toFixed(0)}`);
+    await ctx.close();
+  }
   const noTouchOnDesktop = await g(() => getComputedStyle(document.getElementById('touch-controls')).display === 'none');
   check('desktop shows no touch controls', noTouchOnDesktop);
   const yawD0 = await g(() => window.__game.orbitCam.yaw);

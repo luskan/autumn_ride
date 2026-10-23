@@ -4,6 +4,7 @@
 // autopilot, camera and pause.
 
 const STICK_R = 58; // px of thumb travel for full deflection
+const KNOB_TRAVEL = 34 / STICK_R; // the drawn knob stays inside its ring
 const DEAD = 0.12;
 
 // dead zone, then linear up to 1
@@ -42,7 +43,7 @@ export function setupTouchControls({ drive, release, toggleAutopilot, nextCamera
   const placeStick = (cx, cy, dx, dy) => {
     base.style.left = `${cx}px`;
     base.style.top = `${cy}px`;
-    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    knob.style.transform = `translate(${dx * KNOB_TRAVEL}px, ${dy * KNOB_TRAVEL}px)`;
   };
   const resetStick = () => {
     base.classList.remove('active');

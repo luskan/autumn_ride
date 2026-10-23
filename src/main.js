@@ -180,13 +180,25 @@ const canFullscreen = !!(document.fullscreenEnabled || document.webkitFullscreen
 const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 const standalone = window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone === true;
 
+// No orientation lock: the game works in portrait too, and rotating the screen while
+// fullscreen switches has left Chrome tabs unable to enter fullscreen again.
 function enterFullscreen() {
   const request = root.requestFullscreen || root.webkitRequestFullscreen;
   if (!canFullscreen || !request || isFullscreen()) return;
-  // promise or undefined depending on the browser; orientation lock only works in fullscreen
-  Promise.resolve(request.call(root, { navigationUI: 'hide' }))
-    .then(() => screen.orientation?.lock?.('landscape'))
-    .catch(() => {});
+  let settled = false;
+  const failed = () => hud.toast('Pełny ekran niedostępny - otwórz grę w nowej karcie', 'bump');
+  // promise or undefined depending on the browser
+  Promise.resolve(request.call(root, { navigationUI: 'hide' })).then(
+    () => (settled = true),
+    () => {
+      settled = true;
+      failed();
+    },
+  );
+  // a request that never answers is a stuck tab: say so instead of doing nothing
+  setTimeout(() => {
+    if (!settled && !isFullscreen()) failed();
+  }, 1500);
 }
 
 function toggleFullscreen() {
@@ -422,6 +434,7 @@ const camPos = new THREE.Vector3();
 const camLook = new THREE.Vector3();
 const tmpV = new THREE.Vector3();
 
+const PORTRAIT_HFOV = 52; // degrees of horizontal view kept on portrait screens
 const camDesired = new THREE.Vector3();
 const camTarget = new THREE.Vector3();
 const camOffset = new THREE.Vector3();
@@ -479,7 +492,13 @@ function updateCamera(dt, snap = false) {
     state.shake = damp(state.shake, 0, 6, dt);
   }
   camera.lookAt(camLook);
-  const fov = md.fov + (player.v / PLAYER.maxSpeed) * 7;
+  const speedFov = (player.v / PLAYER.maxSpeed) * 7;
+  let fov = md.fov + speedFov;
+  // portrait: widen the vertical angle so the horizontal view does not shrink to a slit
+  if (camera.aspect < 1) {
+    const portrait = (2 * Math.atan(Math.tan((PORTRAIT_HFOV * Math.PI) / 360) / camera.aspect) * 180) / Math.PI;
+    fov = Math.min(100, Math.max(fov, portrait + speedFov));
+  }
   if (Math.abs(camera.fov - fov) > 0.02) {
     camera.fov = fov;
     camera.updateProjectionMatrix();
