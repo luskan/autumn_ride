@@ -838,3 +838,27 @@ body.touch .tc-top {
     display: none;
   }
 }
+
+/* ---------- start / pause buttons, exit for the installed app ---------- */
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--cream);
+  border: 1px solid rgba(255, 244, 226, 0.45);
+  box-shadow: none;
+}
+
+.btn-secondary:hover {
+  box-shadow: none;
+  background: rgba(255, 244, 226, 0.08);
+}
+
+body.touch .keyboard-only {
+  display: none;
+}

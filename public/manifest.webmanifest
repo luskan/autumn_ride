@@ -5,7 +5,7 @@
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#1c120b",
   "theme_color": "#1c120b",
   "icons": [

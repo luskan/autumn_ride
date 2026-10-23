@@ -108,7 +108,10 @@
         </div>
         <p class="touch-help">Lewy kciuk: joystick - w górę gaz, w dół hamulec, na boki skręt. Prawa strona ekranu: przeciągnij, aby obrócić kamerę, dwa palce przybliżają. U góry: autopilot, kamera i pauza.</p>
         <p class="note">Jedziesz tylko po drodze - barierki trzymają auto na jezdni. Stłuczki nie uszkadzają samochodu.</p>
-        <button class="btn" id="start-btn">Ruszaj</button>
+        <div class="btn-row">
+          <button class="btn" id="start-btn">Ruszaj</button>
+          <button class="btn btn-secondary exit-btn hidden">Wyjdź z gry</button>
+        </div>
         <div class="hint">albo naciśnij Enter / Spację</div>
         <p class="ios-hint hidden" id="ios-hint">Pełny ekran na iPhonie: Udostępnij -&gt; Do ekranu początkowego, potem uruchom grę z ikony.</p>
       </div>
@@ -117,8 +120,11 @@
     <div id="pause" class="overlay hidden">
       <div class="card">
         <h1>Pauza</h1>
-        <p class="subtitle">Naciśnij P lub Esc, aby jechać dalej.</p>
-        <button class="btn" id="resume-btn">Wracam na trasę</button>
+        <p class="subtitle keyboard-only">Naciśnij P lub Esc, aby jechać dalej.</p>
+        <div class="btn-row">
+          <button class="btn" id="resume-btn">Wracam na trasę</button>
+          <button class="btn btn-secondary exit-btn hidden">Wyjdź z gry</button>
+        </div>
       </div>
     </div>
 

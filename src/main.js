@@ -222,6 +222,18 @@ document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
 updateFullscreenButton();
 // iPhone Safari has no fullscreen API for pages; a home screen web app runs full screen instead
 document.getElementById('ios-hint').classList.toggle('hidden', !(touchDevice && !canFullscreen && !standalone));
+
+// Installed app (home screen icon): it already runs full screen, and system gestures are the
+// way out, so it gets an explicit exit button instead of another fullscreen request.
+function exitApp() {
+  window.close();
+  // still here: the browser did not allow closing
+  setTimeout(() => hud.toast('Aby wyjść, przesuń od krawędzi ekranu i dotknij Wstecz'), 400);
+}
+for (const btn of document.querySelectorAll('.exit-btn')) {
+  btn.classList.toggle('hidden', !standalone);
+  btn.addEventListener('click', exitApp);
+}
 // the manifest only makes sense when served over http(s), file:// would log an error
 if (location.protocol.startsWith('http')) {
   const link = document.createElement('link');
@@ -232,7 +244,9 @@ if (location.protocol.startsWith('http')) {
 
 function startGame() {
   if (state.mode !== 'menu') return;
-  if (touchDevice) enterFullscreen();
+  // an installed app is full screen already; requesting it again keeps the system bars from
+  // showing on a swipe, which leaves no way to leave the game
+  if (touchDevice && !standalone) enterFullscreen();
   state.mode = 'play';
   state.stats = { time: 0, distance: 0, overtakes: 0, bumps: 0 };
   state.startDistance = world.player.distance;

@@ -443,10 +443,11 @@ try {
       const thumb = { x: vw * 0.2, y: vh * 0.7, id: 1 };
       await touch('touchStart', [thumb]);
       await touch('touchMove', [{ ...thumb, y: thumb.y - 60 }]);
-      await mp.waitForTimeout(1500);
+      // wait on the game state rather than the clock: under load frames (and simulated time) slow down
+      await mp.waitForFunction(() => window.__game.world.player.v > 8, null, { timeout: 5000 }).catch(() => {});
       const t0 = await tstate();
       await touch('touchMove', [{ ...thumb, x: thumb.x - 45, y: thumb.y - 45 }]);
-      await mp.waitForTimeout(1000);
+      await mp.waitForFunction(() => window.__game.world.player.d < 1.5, null, { timeout: 5000 }).catch(() => {});
       const t1 = await tstate();
       // a second finger on the right half orbits the camera meanwhile
       const yaw0 = await mp.evaluate(() => window.__game.orbitCam.yaw);
@@ -486,6 +487,39 @@ try {
     }
     await ctx.close();
   }
+  // ---- installed app (home screen icon, display-mode fullscreen) ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 780, height: 360 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+    const ap = await ctx.newPage();
+    await ap.addInitScript(() => {
+      const mm = window.matchMedia.bind(window);
+      window.matchMedia = (q) => (q.includes('display-mode: fullscreen') ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : mm(q));
+      window.__calls = { fullscreen: 0, close: 0 };
+      Element.prototype.requestFullscreen = function () { window.__calls.fullscreen++; return Promise.resolve(); };
+      window.close = () => { window.__calls.close++; };
+    });
+    await ap.goto(url);
+    await ap.waitForFunction(() => window.__game && window.__game.state.mode === 'menu', null, { timeout: 90000 });
+    const visible = (sel) => ap.evaluate((sel) => [...document.querySelectorAll(sel)].some((e) => !e.classList.contains('hidden') && e.getBoundingClientRect().width > 0), sel);
+    const menuExit = await visible('#start .exit-btn');
+    const fsBtnHidden = !(await visible('#fs-btn'));
+    await ap.tap('#start-btn');
+    await ap.waitForTimeout(300);
+    const afterStart = await ap.evaluate(() => ({ mode: window.__game.state.mode, calls: { ...window.__calls } }));
+    await ap.tap('#tc-pause');
+    await ap.waitForTimeout(200);
+    const pauseExit = await visible('#pause .exit-btn');
+    await ap.screenshot({ path: `${OUT}/12-installed-pause.png` });
+    await ap.tap('#pause .exit-btn');
+    await ap.waitForTimeout(100);
+    const closeCalls = await ap.evaluate(() => window.__calls.close);
+    check('installed app: starts without requesting fullscreen again (system bars can be swiped in)', afterStart.mode === 'play' && afterStart.calls.fullscreen === 0 && fsBtnHidden, JSON.stringify(afterStart.calls));
+    check('installed app: exit button on the start screen and in pause closes the app', menuExit && pauseExit && closeCalls === 1);
+    await ctx.close();
+  }
+  const exitInBrowser = await g(() => [...document.querySelectorAll('.exit-btn')].some((e) => !e.classList.contains('hidden')));
+  check('browser tab: no exit button (a page cannot close the tab)', !exitInBrowser);
+
   // ---- phone in portrait: HUD pieces must not overlap, the view must not shrink to a slit ----
   {
     const ctx = await browser.newContext({ viewport: { width: 360, height: 643 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
