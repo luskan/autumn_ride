@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jesienna Trasa</title>
+    <meta name="description" content="Spokojna jazda samochodem przez jesienną okolicę - gra 3D w przeglądarce." />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="panel stats-left">
+        <div class="stat"><span class="label">Dystans</span><span class="value" id="hud-dist">0.0 km</span></div>
+        <div class="stat"><span class="label">Czas</span><span class="value" id="hud-time">00:00</span></div>
+      </div>
+      <div class="panel stats-right">
+        <div class="stat"><span class="label">Wyprzedzone</span><span class="value" id="hud-overtakes">0</span></div>
+        <div class="stat bumps"><span class="label">Stłuczki</span><span class="value" id="hud-bumps">0</span></div>
+      </div>
+
+      <div class="speedo">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <defs>
+            <linearGradient id="speedGrad" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0" stop-color="#f6c75a" />
+              <stop offset="1" stop-color="#e0582a" />
+            </linearGradient>
+          </defs>
+          <path class="track" d="M 37.8 162.2 A 88 88 0 1 1 162.2 162.2" />
+          <path id="speed-arc" d="M 37.8 162.2 A 88 88 0 1 1 162.2 162.2" />
+          <g id="ticks"></g>
+          <g id="set-marker" class="hidden"><path d="M 100 7 L 105 0 L 95 0 Z" /></g>
+          <g id="needle" transform="rotate(-135 100 100)">
+            <line x1="100" y1="108" x2="100" y2="36" />
+            <circle cx="100" cy="100" r="6" />
+          </g>
+        </svg>
+        <div class="speed-num"><span id="hud-speed">0</span><small>km/h</small></div>
+      </div>
+      <div id="auto-badge" class="hidden">
+        <span class="auto-dot"></span>
+        <span class="auto-label">Autopilot</span>
+        <b><span id="auto-speed">0</span> km/h</b>
+        <span id="auto-state"></span>
+      </div>
+
+      <div class="keys-hint">
+        <span><b>A</b> autopilot</span>
+        <span><b>C</b> kamera: <span id="hud-camera">zza auta</span></span>
+        <span><b>M</b> dźwięk: <span id="hud-sound">wł.</span></span>
+        <span><b>P</b> pauza</span>
+      </div>
+      <div id="toast"></div>
+    </div>
+
+    <div id="loading" class="overlay">
+      <div class="card">
+        <h1>Jesienna Trasa</h1>
+        <p class="subtitle" id="loading-text">Ładowanie...</p>
+        <div class="bar"><div id="loading-bar"></div></div>
+      </div>
+    </div>
+
+    <div id="start" class="overlay hidden">
+      <div class="card">
+        <h1>Jesienna Trasa</h1>
+        <p class="subtitle">Złota godzina, pagórki i kręta droga przez jesienną okolicę.</p>
+        <div class="controls">
+          <div class="keys"><kbd class="arrow up" aria-label="strzałka w górę"></kbd></div>
+          <div>Przyspieszanie</div>
+          <div class="keys"><kbd class="arrow down" aria-label="strzałka w dół"></kbd></div>
+          <div>Zwalnianie i hamowanie</div>
+          <div class="keys"><kbd class="arrow left" aria-label="strzałka w lewo"></kbd><kbd class="arrow right" aria-label="strzałka w prawo"></kbd></div>
+          <div>Skręt w lewo / w prawo</div>
+          <div class="keys"><kbd>A</kbd></div>
+          <div>Autopilot: trzyma prędkość, wyprzedza</div>
+          <div class="keys"><kbd>C</kbd></div>
+          <div>Zmiana kamery</div>
+          <div class="keys"><kbd>M</kbd><kbd>P</kbd></div>
+          <div>Dźwięk / pauza</div>
+        </div>
+        <p class="note">Jedziesz tylko po drodze - barierki trzymają auto na jezdni. Stłuczki nie uszkadzają samochodu.</p>
+        <button class="btn" id="start-btn">Ruszaj</button>
+        <div class="hint">albo naciśnij Enter / Spację</div>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="card">
+        <h1>Pauza</h1>
+        <p class="subtitle">Naciśnij P lub Esc, aby jechać dalej.</p>
+        <button class="btn" id="resume-btn">Wracam na trasę</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
