@@ -395,6 +395,81 @@ try {
   check('autopilot drives a full lap in traffic', lap.km > 8.5 && lap.rail === 0 && lap.bumps <= 1, `${lap.km.toFixed(2)} km in ${lap.minutes.toFixed(1)} min, bumps ${lap.bumps}, rail contacts ${lap.rail}`);
   check('autopilot overtakes on its own during the lap', lap.overtakes >= 3, `${lap.overtakes} overtakes, d ${lap.minD.toFixed(2)}..${lap.maxD.toFixed(2)}`);
 
+  // ---- phones in landscape: the start menu fits, start goes full screen where the browser allows it ----
+  for (const [name, width, height, ios] of [['iPhone, Safari bars visible', 750, 340, true], ['Android phone', 740, 360, false]]) {
+    const ctx = await browser.newContext({ viewport: { width, height }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    const mp = await ctx.newPage();
+    mp.on('pageerror', (e) => errors.push(`${name} pageerror: ${e.message}`));
+    // iPhone Safari offers no fullscreen API to pages
+    if (ios) await mp.addInitScript(() => { for (const k of ['fullscreenEnabled', 'webkitFullscreenEnabled']) Object.defineProperty(Document.prototype, k, { get: () => false, configurable: true }); });
+    await mp.goto(url);
+    await mp.waitForFunction(() => window.__game && window.__game.state.mode === 'menu', null, { timeout: 90000 });
+    const fits = await mp.evaluate(() => {
+      const b = document.querySelector('#start .card').getBoundingClientRect();
+      return b.top >= 0 && b.left >= 0 && b.bottom <= innerHeight && b.right <= innerWidth;
+    });
+    check(`${name} ${width}x${height}: start menu fits on screen`, fits);
+    await mp.screenshot({ path: `${OUT}/10-mobile-${ios ? 'ios' : 'android'}-menu.png` });
+    await mp.tap('#start-btn');
+    await mp.waitForTimeout(800);
+    const st = await mp.evaluate(() => ({
+      mode: window.__game.state.mode,
+      fullscreen: !!document.fullscreenElement,
+      iosHint: !document.getElementById('ios-hint').classList.contains('hidden'),
+    }));
+    if (ios) check(`${name}: shows the home screen hint instead of fullscreen`, st.mode === 'play' && st.iosHint && !st.fullscreen);
+    else check(`${name}: tapping start enters full screen`, st.mode === 'play' && st.fullscreen);
+    await mp.screenshot({ path: `${OUT}/10-mobile-${ios ? 'ios' : 'android'}-play.png` });
+
+    if (!ios) {
+      // touch controls, driven with real touch events (several fingers at once)
+      await mp.evaluate(() => {
+        const w = window.__game.world;
+        for (const c of w.traffic.cars) if (Math.abs(w.track.delta(w.player.s, c.s)) < 500) c.s = w.track.wrap(c.s + 1000);
+        w.player.v = 0; w.player.d = 1.85; w.player.yaw = 0;
+      });
+      const cdp = await ctx.newCDPSession(mp);
+      const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
+      const at = (sel, fx = 0.5) => mp.evaluate(([sel, fx]) => {
+        const b = document.querySelector(sel).getBoundingClientRect();
+        return { x: b.left + b.width * fx, y: b.top + b.height / 2 };
+      }, [sel, fx]);
+      const tstate = () => mp.evaluate(() => {
+        const G = window.__game;
+        return { v: G.world.player.v, d: G.world.player.d, input: { ...G.input }, pilot: G.world.pilot.active, mode: G.state.mode };
+      });
+      const gas = { ...(await at('.pedal.gas')), id: 1 };
+      const left = { ...(await at('#steer-pad', 0.25)), id: 2 };
+      await touch('touchStart', [gas]);
+      await mp.waitForTimeout(1500);
+      await touch('touchStart', [gas, left]);
+      await mp.waitForTimeout(1000);
+      const t1 = await tstate();
+      await touch('touchEnd', []);
+      await mp.waitForTimeout(100);
+      const t2 = await tstate();
+      check(`${name}: touch gas + steering work together and release cleanly`, t1.input.up && t1.input.left && t1.v > 8 && t1.d < 1.5 && !t2.input.up && !t2.input.left, `${(t1.v * 3.6).toFixed(0)} km/h, d ${t1.d.toFixed(2)}`);
+      await mp.evaluate(() => { const p = window.__game.world.player; p.v = 22; p.d = 1.85; p.yaw = 0; });
+      await mp.tap('#tc-auto');
+      await mp.waitForTimeout(200);
+      const t3 = await tstate();
+      await touch('touchStart', [left]);
+      await mp.waitForTimeout(150);
+      await touch('touchEnd', []);
+      const t4 = await tstate();
+      check(`${name}: AUTO button engages the autopilot, steering pad takes over`, t3.pilot && !t4.pilot);
+      await mp.tap('#tc-pause');
+      await mp.waitForTimeout(150);
+      const paused = (await tstate()).mode === 'pause';
+      await mp.tap('#resume-btn');
+      await mp.waitForTimeout(150);
+      check(`${name}: pause button pauses, resume continues`, paused && (await tstate()).mode === 'play');
+    }
+    await ctx.close();
+  }
+  const noTouchOnDesktop = await g(() => getComputedStyle(document.getElementById('touch-controls')).display === 'none');
+  check('desktop shows no touch controls', noTouchOnDesktop);
+
   const relevant = errors.filter((e) => !/GPU stall|ReadPixels|Automatic fallback to software WebGL/.test(e));
   check('no console errors', relevant.length === 0, relevant.slice(0, 5).join(' | '));
 } catch (e) {

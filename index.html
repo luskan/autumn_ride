@@ -2,13 +2,22 @@
 <html lang="pl">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1c120b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Jesienna Trasa" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <title>Jesienna Trasa</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e8501e'/%3E%3Cpath d='M20 64 C28 42 34 28 46 0' stroke='%232d3138' stroke-width='16' fill='none'/%3E%3Cpath d='M20 64 C28 42 34 28 46 0' stroke='%23f6c344' stroke-width='2.5' stroke-dasharray='6 5' fill='none'/%3E%3C/svg%3E" />
     <meta name="description" content="Spokojna jazda samochodem przez jesienną okolicę - gra 3D w przeglądarce." />
   </head>
   <body>
     <canvas id="game"></canvas>
+    <button id="fs-btn" class="icon-btn hidden" aria-label="Pełny ekran" title="Pełny ekran">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
+    </button>
 
     <div id="hud" class="hidden">
       <div class="panel stats-left">
@@ -53,6 +62,30 @@
         <span><b>P</b> pauza</span>
       </div>
       <div id="toast"></div>
+
+      <div id="touch-controls">
+        <div class="tc-top">
+          <button class="tc-small" id="tc-auto" aria-label="Autopilot">AUTO</button>
+          <button class="tc-small" id="tc-cam" aria-label="Zmiana kamery">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h4l2-3h6l2 3h4v11H3z" /><circle cx="12" cy="13" r="3.5" /></svg>
+          </button>
+          <button class="tc-small" id="tc-pause" aria-label="Pauza">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg>
+          </button>
+        </div>
+        <div id="steer-pad" aria-label="Skręt">
+          <span class="tc-btn" data-side="left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg></span>
+          <span class="tc-btn" data-side="right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg></span>
+        </div>
+        <div class="pedals">
+          <button class="tc-btn pedal" data-key="down" aria-label="Hamulec">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg><span>Hamuj</span>
+          </button>
+          <button class="tc-btn pedal gas" data-key="up" aria-label="Gaz">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg><span>Gaz</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <div id="loading" class="overlay">
@@ -81,9 +114,11 @@
           <div class="keys"><kbd>M</kbd><kbd>P</kbd></div>
           <div>Dźwięk / pauza</div>
         </div>
+        <p class="touch-help">Lewy kciuk: skręt. Prawy kciuk: gaz i hamulec. U góry: autopilot (trzyma prędkość i wyprzedza), kamera i pauza.</p>
         <p class="note">Jedziesz tylko po drodze - barierki trzymają auto na jezdni. Stłuczki nie uszkadzają samochodu.</p>
         <button class="btn" id="start-btn">Ruszaj</button>
         <div class="hint">albo naciśnij Enter / Spację</div>
+        <p class="ios-hint hidden" id="ios-hint">Pełny ekran na iPhonie: Udostępnij -&gt; Do ekranu początkowego, potem uruchom grę z ikony.</p>
       </div>
     </div>
 

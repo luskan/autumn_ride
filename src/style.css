@@ -23,6 +23,16 @@ body {
   font-family: var(--font);
   user-select: none;
   -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* keep HUD clear of notches and rounded corners (landscape phones) */
+:root {
+  --safe-l: max(16px, env(safe-area-inset-left));
+  --safe-r: max(16px, env(safe-area-inset-right));
+  --safe-t: max(16px, env(safe-area-inset-top));
+  --safe-b: max(16px, env(safe-area-inset-bottom));
 }
 
 #game {
@@ -58,12 +68,16 @@ body {
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
 }
 
+.panel {
+  top: var(--safe-t);
+}
+
 .stats-left {
-  left: 16px;
+  left: var(--safe-l);
 }
 
 .stats-right {
-  right: 16px;
+  right: var(--safe-r);
 }
 
 .stat {
@@ -92,8 +106,8 @@ body {
 
 .speedo {
   position: absolute;
-  right: 18px;
-  bottom: 18px;
+  right: var(--safe-r);
+  bottom: var(--safe-b);
   width: 190px;
   height: 190px;
   border-radius: 50%;
@@ -174,8 +188,8 @@ body {
 
 #auto-badge {
   position: absolute;
-  right: 18px;
-  bottom: 220px;
+  right: var(--safe-r);
+  bottom: calc(var(--safe-b) + 202px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -265,9 +279,8 @@ body {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
+  overflow-y: auto;
+  padding: 16px var(--safe-r) 16px var(--safe-l);
   background: radial-gradient(ellipse at 50% 60%, rgba(30, 16, 8, 0.25), rgba(20, 10, 4, 0.6));
 }
 
@@ -275,7 +288,9 @@ body {
   background: radial-gradient(ellipse at 50% 40%, #6b3a1a, #1c120b 75%);
 }
 
+/* margin: auto centers the card, yet lets a too tall card scroll instead of being cut */
 .card {
+  margin: auto;
   width: min(560px, 100%);
   padding: 30px 34px;
   border-radius: 22px;
@@ -438,10 +453,354 @@ kbd.right::before {
   }
 
   #auto-badge {
-    bottom: 166px;
+    bottom: calc(var(--safe-b) + 150px);
   }
 
   .keys-hint {
     display: none;
+  }
+}
+
+/* ---------- fullscreen button ---------- */
+.icon-btn {
+  position: fixed;
+  z-index: 5;
+  top: var(--safe-t);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+
+.icon-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--cream);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ios-hint {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #ffd9a6;
+}
+
+/* touch screens have no keyboard: hide keyboard-only hints */
+@media (hover: none) and (pointer: coarse) {
+  .keys-hint,
+  .hint {
+    display: none;
+  }
+}
+
+/* ---------- short screens: phones in landscape ---------- */
+@media (max-height: 520px) {
+  .card {
+    width: min(720px, 100%);
+    padding: 14px 22px;
+    border-radius: 16px;
+  }
+
+  .card h1 {
+    margin-bottom: 2px;
+    font-size: 26px;
+  }
+
+  .card .subtitle {
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+
+  .controls {
+    grid-template-columns: auto 1fr auto 1fr;
+    gap: 6px 12px;
+    max-width: 640px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+
+  kbd {
+    min-width: 28px;
+    height: 26px;
+    font-size: 12px;
+  }
+
+  .note {
+    margin-bottom: 10px;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .btn {
+    padding: 9px 30px;
+    font-size: 16px;
+  }
+
+  .hint,
+  .ios-hint {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+
+  .panel {
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 12px;
+  }
+
+  .stat {
+    min-width: 56px;
+  }
+
+  .stat .label {
+    font-size: 9px;
+  }
+
+  .stat .value {
+    font-size: 16px;
+  }
+
+  .speedo {
+    width: 128px;
+    height: 128px;
+  }
+
+  .speed-num {
+    bottom: 18px;
+    font-size: 24px;
+  }
+
+  #auto-badge {
+    bottom: calc(var(--safe-b) + 136px);
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .keys-hint {
+    display: none;
+  }
+
+  #toast {
+    top: 22%;
+    font-size: 15px;
+  }
+
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+/* ---------- touch controls ---------- */
+#touch-controls,
+.touch-help {
+  display: none;
+}
+
+body.touch #touch-controls {
+  display: block;
+}
+
+body.touch .touch-help {
+  display: block;
+  margin: 0 auto 14px;
+  max-width: 520px;
+  font-size: 15px;
+  color: var(--cream);
+}
+
+/* on touch screens the keyboard legend is replaced by .touch-help */
+body.touch .controls,
+body.touch .hint,
+body.touch .keys-hint {
+  display: none;
+}
+
+#touch-controls button,
+#touch-controls .tc-btn {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.tc-btn,
+.tc-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: rgba(30, 18, 10, 0.42);
+  color: var(--cream);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 0.08s, transform 0.08s;
+}
+
+.tc-btn svg,
+.tc-small svg {
+  fill: none;
+  stroke: var(--cream);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tc-btn.active {
+  background: rgba(243, 154, 46, 0.6);
+  transform: scale(0.96);
+}
+
+.tc-top {
+  position: absolute;
+  top: var(--safe-t);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+
+.tc-top .icon-btn {
+  position: static;
+  transform: none;
+  width: 40px;
+  height: 40px;
+}
+
+.tc-small {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 12px;
+  font: 700 12px var(--font);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.tc-small svg {
+  width: 22px;
+  height: 22px;
+}
+
+#tc-auto {
+  width: 54px;
+}
+
+#tc-auto.on {
+  background: rgba(60, 170, 105, 0.7);
+  border-color: rgba(120, 220, 160, 0.8);
+}
+
+#steer-pad {
+  position: absolute;
+  left: var(--safe-l);
+  bottom: var(--safe-b);
+  display: flex;
+  gap: 12px;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#steer-pad .tc-btn {
+  width: 84px;
+  height: 84px;
+  border-radius: 22px;
+}
+
+#steer-pad .tc-btn svg {
+  width: 40px;
+  height: 40px;
+}
+
+.pedals {
+  position: absolute;
+  right: var(--safe-r);
+  bottom: var(--safe-b);
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.pedal {
+  flex-direction: column;
+  gap: 2px;
+  width: 78px;
+  height: 78px;
+  padding: 0;
+  border-radius: 20px;
+  font: 700 12px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pedal svg {
+  width: 32px;
+  height: 32px;
+}
+
+.pedal.gas {
+  height: 110px;
+}
+
+/* the dial would collide with the pedals: a compact speed readout at the bottom center */
+body.touch .speedo {
+  left: 50%;
+  right: auto;
+  bottom: var(--safe-b);
+  transform: translateX(-50%);
+  width: auto;
+  height: auto;
+  padding: 6px 16px;
+  border-radius: 999px;
+}
+
+body.touch .speedo svg {
+  display: none;
+}
+
+body.touch .speed-num {
+  position: static;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 26px;
+}
+
+body.touch #auto-badge {
+  right: auto;
+  left: 50%;
+  bottom: calc(var(--safe-b) + 52px);
+  transform: translateX(-50%);
+}
+
+@media (max-height: 400px) {
+  #steer-pad .tc-btn {
+    width: 72px;
+    height: 72px;
+  }
+
+  .pedal {
+    width: 70px;
+    height: 70px;
+  }
+
+  .pedal.gas {
+    height: 96px;
+  }
+
+  body.touch .touch-help {
+    margin-bottom: 10px;
+    font-size: 13px;
   }
 }

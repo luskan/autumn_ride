@@ -15,6 +15,7 @@ import { Autopilot } from './autopilot.js';
 import { Leaves, Sparks } from './effects.js';
 import { AudioFx } from './audio.js';
 import { Hud } from './hud.js';
+import { setupTouchControls } from './touch.js';
 import { shaderTime } from './materials.js';
 
 patchFog();
@@ -171,8 +172,55 @@ async function init() {
 
 // ---------- game flow ----------
 
+// ---------- fullscreen (phones) ----------
+
+const touchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+const root = document.documentElement;
+const canFullscreen = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const standalone = window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone === true;
+
+function enterFullscreen() {
+  const request = root.requestFullscreen || root.webkitRequestFullscreen;
+  if (!canFullscreen || !request || isFullscreen()) return;
+  // promise or undefined depending on the browser; orientation lock only works in fullscreen
+  Promise.resolve(request.call(root, { navigationUI: 'hide' }))
+    .then(() => screen.orientation?.lock?.('landscape'))
+    .catch(() => {});
+}
+
+function toggleFullscreen() {
+  if (!isFullscreen()) return enterFullscreen();
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  Promise.resolve(exit.call(document)).catch(() => {});
+}
+
+const fsButton = document.getElementById('fs-btn');
+function updateFullscreenButton() {
+  fsButton.classList.toggle('hidden', !canFullscreen || standalone);
+  fsButton.setAttribute('aria-label', isFullscreen() ? 'Wyjdź z pełnego ekranu' : 'Pełny ekran');
+}
+fsButton.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleFullscreen();
+  fsButton.blur();
+});
+document.addEventListener('fullscreenchange', updateFullscreenButton);
+document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+updateFullscreenButton();
+// iPhone Safari has no fullscreen API for pages; a home screen web app runs full screen instead
+document.getElementById('ios-hint').classList.toggle('hidden', !(touchDevice && !canFullscreen && !standalone));
+// the manifest only makes sense when served over http(s), file:// would log an error
+if (location.protocol.startsWith('http')) {
+  const link = document.createElement('link');
+  link.rel = 'manifest';
+  link.href = 'manifest.webmanifest';
+  document.head.appendChild(link);
+}
+
 function startGame() {
   if (state.mode !== 'menu') return;
+  if (touchDevice) enterFullscreen();
   state.mode = 'play';
   state.stats = { time: 0, distance: 0, overtakes: 0, bumps: 0 };
   state.startDistance = world.player.distance;
@@ -181,6 +229,8 @@ function startGame() {
   audio.init();
   hud.show('start', false);
   hud.show('hud', true);
+  // on touch screens the fullscreen button joins the row of small HUD buttons
+  document.querySelector('#touch-controls .tc-top').prepend(fsButton);
   hud.toast('Szerokiej drogi!');
 }
 
@@ -218,21 +268,45 @@ function toggleAutopilot() {
 
 const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
+// driving controls shared by the keyboard and the touch buttons
+function press(k) {
+  if (state.mode !== 'play') return;
+  input[k] = true;
+  // steering takes the wheel back from the autopilot
+  if ((k === 'left' || k === 'right') && world.pilot.active) {
+    world.pilot.disengage();
+    hud.toast('Autopilot wyłączony - przejmujesz kierownicę');
+  }
+}
+
+function release(k) {
+  input[k] = false;
+}
+
+const touch = setupTouchControls({
+  press,
+  release,
+  toggleAutopilot,
+  nextCamera: () => setCamera(state.camMode + 1),
+  pause: () => setPaused(true),
+});
+// touch controls on touch screens; a laptop with a touchscreen gets them on the first touch
+const useTouchControls = () => document.body.classList.add('touch');
+if (touchDevice) useTouchControls();
+window.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'touch') useTouchControls();
+});
+
 window.addEventListener('keydown', (e) => {
   const k = KEYS[e.code];
   if (k) {
     e.preventDefault();
-    if (state.mode === 'play') input[k] = true;
-    // steering takes the wheel back from the autopilot
-    if ((k === 'left' || k === 'right') && state.mode === 'play' && world.pilot.active) {
-      world.pilot.disengage();
-      hud.toast('Autopilot wyłączony - przejmujesz kierownicę');
-    }
+    press(k);
   }
   if (state.mode === 'menu' && (e.code === 'Enter' || e.code === 'Space' || k === 'up')) {
     e.preventDefault();
     startGame();
-    if (k) input[k] = true;
+    if (k) press(k);
   } else if (e.code === 'KeyA' && !e.repeat) {
     toggleAutopilot();
   } else if (e.code === 'KeyP' || e.code === 'Escape') {
@@ -245,7 +319,7 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   const k = KEYS[e.code];
-  if (k) input[k] = false;
+  if (k) release(k);
 });
 window.addEventListener('blur', () => setPaused(true));
 document.addEventListener('visibilitychange', () => {
@@ -401,6 +475,7 @@ function frame(now) {
       overtakes: state.stats.overtakes, bumps: state.stats.bumps,
       auto: world.pilot.active ? { kmh: world.pilot.setSpeed * KMH, state: world.pilot.state } : null,
     });
+    touch.update(world.pilot.active);
   }
 
   renderer.render(scene, camera);
