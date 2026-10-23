@@ -12,6 +12,7 @@ import { planVillages, buildVillages, buildHayBales, buildSigns } from './props.
 import { createCarMaterials, Traffic } from './traffic.js';
 import { Player } from './player.js';
 import { Autopilot } from './autopilot.js';
+import { ResolutionGovernor } from './resolution.js';
 import { Leaves, Sparks } from './effects.js';
 import { AudioFx } from './audio.js';
 import { Hud } from './hud.js';
@@ -25,11 +26,10 @@ const hud = new Hud();
 const audio = new AudioFx();
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get('aa') !== '0', powerPreference: 'high-performance' });
-const maxPixelRatio = params.has('pr') ? Number(params.get('pr')) : Math.min(window.devicePixelRatio || 1, 1.5);
-// start conservatively, the adaptive loop raises it on fast GPUs
-let pixelRatio = Math.min(1, maxPixelRatio);
-let ratioCeiling = maxPixelRatio;
-let fastWindows = 0;
+// ?pr=1.5 forces a fixed pixel ratio; otherwise start conservatively and let the governor adapt
+const fixedPixelRatio = params.has('pr') ? Number(params.get('pr')) : null;
+const maxPixelRatio = fixedPixelRatio ?? Math.min(window.devicePixelRatio || 1, 1.5);
+let pixelRatio = fixedPixelRatio ?? Math.min(1, maxPixelRatio);
 renderer.setPixelRatio(pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -175,6 +175,10 @@ async function init() {
 // ---------- fullscreen (phones) ----------
 
 const touchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+// phones never render below 1.0: it looks blocky on their small, dense screens
+const governor = fixedPixelRatio === null
+  ? new ResolutionGovernor({ max: maxPixelRatio, floor: touchDevice && window.devicePixelRatio >= 2 ? 1 : 0.75, start: pixelRatio })
+  : null;
 const root = document.documentElement;
 const canFullscreen = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
 const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -524,7 +528,7 @@ function updateCamera(dt, snap = false) {
 const STEP = 1 / 120;
 let acc = 0;
 let last = performance.now();
-let perfFrames = 0, perfTime = 0, perfCooldown = 3;
+let perfFrames = 0, perfTime = 0;
 const sparkOrigin = new THREE.Vector3();
 const sparkVel = new THREE.Vector3();
 const sunFocus = new THREE.Vector3();
@@ -586,24 +590,11 @@ function frame(now) {
   if (perfTime > 1.5) {
     const ms = (perfTime / perfFrames) * 1000;
     state.fps = Math.round(1000 / ms);
-    perfCooldown -= perfTime;
-    if (perfCooldown <= 0 && !params.has('pr')) {
-      // frame time is capped by vsync, so "fast" means hitting the refresh rate;
-      // a level that proved too slow is retried only after ~30 s of smooth play
-      fastWindows = ms < 17.8 ? fastWindows + 1 : 0;
-      if (fastWindows >= 20 && ratioCeiling < maxPixelRatio) {
-        ratioCeiling += 0.25;
-        fastWindows = 0;
-      }
-      let next = pixelRatio;
-      if (ms > 20 && pixelRatio > 0.75) {
-        next = pixelRatio - 0.25;
-        ratioCeiling = next;
-      } else if (ms < 17.8 && pixelRatio < ratioCeiling) next = Math.min(ratioCeiling, pixelRatio + 0.25);
+    if (governor) {
+      const next = governor.update(ms, perfTime);
       if (next !== pixelRatio) {
         pixelRatio = next;
         renderer.setPixelRatio(pixelRatio);
-        perfCooldown = 4;
       }
     }
     state.pixelRatio = pixelRatio;

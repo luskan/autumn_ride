@@ -572,6 +572,43 @@ try {
   const zoomD = await g(() => window.__game.orbitCam.zoom);
   check('desktop: mouse drag orbits the camera, the wheel zooms', Math.abs(yawD1 - yawD0) > 0.5 && zoomD > 1.2, `yaw ${yawD0.toFixed(2)} -> ${yawD1.toFixed(2)}, zoom ${zoomD.toFixed(2)}`);
 
+  // ---- adaptive resolution under sustained load ----
+  // runs last with the main page parked, so no other page competes for the GPU
+  await page.goto('about:blank');
+  for (const phone of [false, true]) {
+    const ctx = await browser.newContext(phone
+      ? { viewport: { width: 780, height: 360 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }
+      : { viewport: { width: 800, height: 450 }, deviceScaleFactor: 1 });
+    const rp = await ctx.newPage();
+    await rp.goto(url);
+    await rp.waitForFunction(() => window.__game && window.__game.state.mode === 'menu', null, { timeout: 90000 });
+    await rp.evaluate(() => {
+      window.__game.startGame();
+      const r = window.__game.renderer;
+      const render = r.render.bind(r);
+      window.__load = 0;
+      // busy-wait inside a frame to simulate a slow GPU / CPU
+      r.render = (sc, cam) => {
+        const end = performance.now() + window.__load;
+        while (performance.now() < end);
+        render(sc, cam);
+      };
+    });
+    const pr = () => rp.evaluate(() => window.__game.renderer.getPixelRatio());
+    await rp.waitForTimeout(4000);
+    const before = await pr();
+    await rp.evaluate(() => { window.__load = 35; });
+    let lowest = Infinity;
+    for (let i = 0; i < 8; i++) {
+      await rp.waitForTimeout(1500);
+      lowest = Math.min(lowest, await pr());
+    }
+    // the policy itself is unit tested in tests/resolution.test.mjs; this checks it is wired into the game
+    if (phone) check('adaptive resolution: a phone never drops below 1.0', lowest >= 1, `lowest ${lowest}`);
+    else check('adaptive resolution: sustained load lowers the resolution', lowest < before, `before ${before}, under load ${lowest}`);
+    await ctx.close();
+  }
+
   const relevant = errors.filter((e) => !/GPU stall|ReadPixels|Automatic fallback to software WebGL/.test(e));
   check('no console errors', relevant.length === 0, relevant.slice(0, 5).join(' | '));
 } catch (e) {
