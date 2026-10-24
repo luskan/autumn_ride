@@ -503,11 +503,12 @@ function updateCamera(dt, snap = false) {
     return;
   }
   const md = CAMERAS[state.camMode];
-  track.frameAt(player.s - md.back, camF);
-  const desired = camDesired.copy(camF.pos).addScaledVector(camF.R, player.d * 0.85);
+  const visual = player.renderState;
+  track.frameAt(visual.s - md.back, camF);
+  const desired = camDesired.copy(camF.pos).addScaledVector(camF.R, visual.d * 0.85);
   desired.y += md.up;
-  track.frameAt(player.s + md.ahead, camF);
-  const look = camTarget.copy(camF.pos).addScaledVector(camF.R, player.d * 0.7);
+  track.frameAt(visual.s + md.ahead, camF);
+  const look = camTarget.copy(camF.pos).addScaledVector(camF.R, visual.d * 0.7);
   look.y += md.lookUp;
   applyOrbit(dt, desired, look, player.group.position);
   if (snap) camPos.copy(desired);
@@ -523,7 +524,7 @@ function updateCamera(dt, snap = false) {
     state.shake = damp(state.shake, 0, 6, dt);
   }
   camera.lookAt(camLook);
-  const speedFov = (Math.abs(player.v) / PLAYER.maxSpeed) * 7;
+  const speedFov = (Math.abs(visual.v) / PLAYER.maxSpeed) * 7;
   let fov = md.fov + speedFov;
   // portrait: widen the vertical angle so the horizontal view does not shrink to a slit
   if (camera.aspect < 1) {
@@ -563,7 +564,7 @@ function frame(now) {
   state.time += dt;
   shaderTime.value = state.time;
 
-  player.updateVisual(dt, state.time);
+  player.updateVisual(dt, state.time, acc / STEP);
   updateCamera(dt);
   sky.position.copy(camera.position);
   camera.getWorldDirection(sunFocus);

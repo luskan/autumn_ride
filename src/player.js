@@ -1,9 +1,19 @@
 import * as THREE from 'three';
 import { buildCarParts, mergeParts, CAR_TYPES } from './cars.js';
 import { PLAYER, ROAD } from './config.js';
-import { clamp, damp } from './util.js';
+import { clamp, damp, lerp } from './util.js';
 
 const moveTowards = (v, target, step) => (v < target ? Math.min(v + step, target) : Math.max(v - step, target));
+
+function copyMotion(player, target) {
+  target.s = player.s;
+  target.d = player.d;
+  target.v = player.v;
+  target.latV = player.latV;
+  target.steer = player.steer;
+  target.throttle = player.throttle;
+  target.braking = player.braking ? 1 : 0;
+}
 
 // longitudinal model, shared with the autopilot
 export const BRAKE_DECEL = 11;
@@ -77,6 +87,10 @@ export class Player {
 
     this._f = { pos: new THREE.Vector3(), T: new THREE.Vector3(), R: new THREE.Vector3(), U: new THREE.Vector3() };
     this._m = new THREE.Matrix4();
+    this._previous = {};
+    this.renderState = {};
+    copyMotion(this, this._previous);
+    copyMotion(this, this.renderState);
   }
 
   reset(s, d = ROAD.laneCenter) {
@@ -86,10 +100,17 @@ export class Player {
     this.yaw = 0;
     this.steer = 0;
     this.latV = 0;
+    this.braking = false;
+    this.throttle = 0;
+    this.touchingRail = false;
+    this.scrape = 0;
+    copyMotion(this, this._previous);
+    copyMotion(this, this.renderState);
   }
 
   // Down brakes, then reverses. Analog reverse is explicit so autopilot braking only stops.
   update(dt, input, events) {
+    copyMotion(this, this._previous);
     const tr = this.track;
     const F = tr.frameAt(this.s, this._f);
 
@@ -135,23 +156,33 @@ export class Player {
     }
   }
 
-  updateVisual(dt, time) {
-    const F = this.track.frameAt(this.s, this._f);
-    const speed = Math.abs(this.v);
-    const direction = this.v < 0 ? -1 : 1;
-    const vy = Math.atan2(this.latV * direction, Math.max(speed, 1.5));
+  updateVisual(dt, time, alpha = 1) {
+    const t = clamp(alpha, 0, 1), previous = this._previous, visual = this.renderState;
+    // Render between the last two physics steps, including across the loop seam.
+    // The chase camera uses the same state so the car does not jitter against it.
+    visual.s = this.track.wrap(previous.s + this.track.delta(previous.s, this.s) * t);
+    visual.d = lerp(previous.d, this.d, t);
+    visual.v = lerp(previous.v, this.v, t);
+    visual.latV = lerp(previous.latV, this.latV, t);
+    visual.steer = lerp(previous.steer, this.steer, t);
+    visual.throttle = lerp(previous.throttle, this.throttle, t);
+    visual.braking = lerp(previous.braking, this.braking ? 1 : 0, t);
+    const F = this.track.frameAt(visual.s, this._f);
+    const speed = Math.abs(visual.v);
+    const direction = visual.v < 0 ? -1 : 1;
+    const vy = Math.atan2(visual.latV * direction, Math.max(speed, 1.5));
     const Z = F.T.clone().multiplyScalar(Math.cos(vy)).addScaledVector(F.R, Math.sin(vy)).normalize();
     const X = new THREE.Vector3().crossVectors(F.U, Z);
     this._m.makeBasis(X, F.U, Z);
     this.group.quaternion.setFromRotationMatrix(this._m);
-    this.group.position.copy(F.pos).addScaledVector(F.R, this.d).addScaledVector(F.U, 0.02);
+    this.group.position.copy(F.pos).addScaledVector(F.R, visual.d).addScaledVector(F.U, 0.02);
 
     const sp = Math.min(1, speed / 20);
-    this.pivot.rotation.z = damp(this.pivot.rotation.z, -this.steer * 0.035 * sp, 6, dt);
-    const pitch = direction * (this.braking ? 0.022 : -0.012 * this.throttle * (1 - speed / PLAYER.maxSpeed));
+    this.pivot.rotation.z = damp(this.pivot.rotation.z, -visual.steer * 0.035 * sp, 6, dt);
+    const pitch = direction * (visual.braking * 0.022 - (1 - visual.braking) * 0.012 * visual.throttle * (1 - speed / PLAYER.maxSpeed));
     this.pivot.rotation.x = damp(this.pivot.rotation.x, pitch, 5, dt);
-    this.pivot.position.y = 0.55 + Math.sin(time * 31) * 0.004 * (speed / PLAYER.maxSpeed) + (this.touchingRail ? Math.sin(time * 60) * 0.006 : 0);
-    const b = this.braking ? 1.9 : 0.75;
+    this.pivot.position.y = 0.55 + (this.touchingRail ? Math.sin(time * 60) * 0.006 : 0);
+    const b = 0.75 + visual.braking * 1.15;
     this.tailMat.color.setRGB(b, b, b);
   }
 }
