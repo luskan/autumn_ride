@@ -211,9 +211,20 @@ try {
     && driverView.label === 'z miejsca kierowcy', JSON.stringify(driverView));
   await shot('02-driver-view');
   await page.keyboard.press('KeyC');
-  check('switching back to an exterior view shows the car again', await g(() =>
-    window.__game.state.camMode === 2 && window.__game.world.player.pivot.visible));
-  await g(() => window.__game.setCamera(0));
+  await wait(150);
+  check('second C selects a distinct high bird view and shows the car', await g(() => {
+    const { state, camera, world } = window.__game;
+    return state.camMode === 2 && world.player.pivot.visible
+      && camera.position.y - world.player.group.position.y > 8;
+  }));
+  await page.keyboard.press('KeyC');
+  await wait(150);
+  check('third C returns directly to the chase view', await g(() => {
+    const { state, camera, world } = window.__game;
+    const distance = camera.position.distanceTo(world.player.group.position);
+    return state.camMode === 0 && distance > 7 && distance < 12
+      && document.getElementById('hud-camera').textContent === 'zza auta';
+  }));
   await page.locator('#lang-switch [data-lang="en"]').click();
   check('language switch updates the live HUD', await g(() => document.getElementById('hud-camera').textContent === 'behind the car'
     && document.querySelector('.stats-left .label').textContent === 'Distance'
@@ -368,7 +379,7 @@ try {
       G.setCamera(cam);
       const p = G.world.player;
       p.s = G.world.track.wrap(s - 45); p.d = 1.85; p.v = 12; p.yaw = 0;
-    }, { s, cam: i });
+    }, { s, cam: i % 3 });
     await wait(1200);
     await shot(`07-scene-${i}`);
   }

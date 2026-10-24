@@ -49,7 +49,6 @@ const CAMERAS = [
   { name: 'cameraChase', back: 8.4, up: 3.0, ahead: 14, lookUp: 1.1, fov: 58 },
   { name: 'cameraDriver', driver: true, fov: 66 },
   { name: 'cameraBird', back: 19, up: 9.5, ahead: 26, lookUp: 0, fov: 54 },
-  { name: 'cameraClose', back: 5.6, up: 1.75, ahead: 12, lookUp: 1.0, fov: 64 },
 ];
 
 const input = { up: false, down: false, left: false, right: false };
