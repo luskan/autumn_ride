@@ -13,8 +13,8 @@ const PUSH = 2.5; // speed kept while pushing against a car
 
 export function createCarMaterials(env, { truckLogo } = {}) {
   return {
-    paint: new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 0.55, roughness: 0.34, envMap: env, envMapIntensity: 0.9 }),
-    glass: new THREE.MeshStandardMaterial({ color: '#223040', metalness: 0.85, roughness: 0.12, envMap: env, envMapIntensity: 1.3, side: THREE.DoubleSide }),
+    paint: new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 0.42, roughness: 0.36, envMap: env, envMapIntensity: 0.85 }),
+    glass: new THREE.MeshStandardMaterial({ color: '#263d50', metalness: 0.3, roughness: 0.18, envMap: env, envMapIntensity: 0.95, side: THREE.DoubleSide }),
     detail: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.2, roughness: 0.65, envMap: env, envMapIntensity: 0.5 }),
     lights: new THREE.MeshBasicMaterial({ vertexColors: true }),
     decal: new THREE.MeshStandardMaterial({

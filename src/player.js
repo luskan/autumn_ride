@@ -31,15 +31,7 @@ export class Player {
 
     const t = CAR_TYPES.hatch;
     const parts = buildCarParts('hatch', { plate: { scale: 1.3, lift: 0.05 } });
-    // third brake light above the rear window
-    parts.tail.push(new THREE.BoxGeometry(0.34, 0.04, 0.03).translate(0, 1.4, -1.86).toNonIndexed());
-    const tb = parts.tail[parts.tail.length - 1];
-    tb.deleteAttribute('uv');
-    const red = new Float32Array(tb.attributes.position.count * 3);
-    for (let i = 0; i < red.length; i += 3) red.set([0.69, 0.006, 0.01], i);
-    tb.setAttribute('color', new THREE.BufferAttribute(red, 3));
-
-    this.paintMat = new THREE.MeshStandardMaterial({ color: '#8e99a6', metalness: 0.72, roughness: 0.26, envMap: env, envMapIntensity: 1.1 });
+    this.paintMat = new THREE.MeshStandardMaterial({ color: '#8e99a6', metalness: 0.42, roughness: 0.36, envMap: env, envMapIntensity: 0.85 });
     this.tailMat = new THREE.MeshBasicMaterial({ vertexColors: true });
     this.group = new THREE.Group();
     this.group.name = 'player';

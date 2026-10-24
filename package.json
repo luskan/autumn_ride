@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/resolution.test.mjs && node tests/smoke.mjs"
+    "test": "node tests/resolution.test.mjs && node tests/cars.test.mjs && node tests/smoke.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"
