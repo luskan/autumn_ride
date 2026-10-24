@@ -254,6 +254,9 @@ export class Vegetation {
   constructor(track, terrain, { villages = [], seed = 1 } = {}) {
     const rnd = mulberry32(seed);
     this.items = this.place(track, terrain, villages, rnd);
+    // Bring a few existing deciduous trees over the forest verge. This keeps the
+    // original tree count and gives the fallen leaves a visible source.
+    this.roadsideMoved = this.moveRoadsideTrees(this.items, track, terrain, villages, mulberry32(seed + 1049));
 
     const geos = buildGeometries(seed);
     const mat = foliageMaterial({ vertexColors: true }, { glow: 0.45 });
@@ -349,6 +352,31 @@ export class Vegetation {
       }
     }
     return items;
+  }
+
+  moveRoadsideTrees(items, track, terrain, villages, rnd) {
+    const moved = [];
+    const f = { pos: new THREE.Vector3(), T: new THREE.Vector3(), R: new THREE.Vector3(), U: new THREE.Vector3() };
+    for (const it of items) {
+      if (!['oak', 'maple', 'amber', 'birch'].includes(it.kind) || it.near < 8.8 || it.near > 20) continue;
+      if (forestDensity(it.x, it.z) < 0.55 || rnd() > 0.5) continue;
+      const q = track.nearest(it.x, it.z, 24);
+      if (!q || !q.side) continue;
+      const s = q.i * track.ds, side = q.side;
+      if (moved.some(o => o.side === side && Math.abs(track.delta(o.s, s)) < 24)) continue;
+      track.frameAt(s, f);
+      const d = side * (7.15 + rnd() * 1.25);
+      const x = f.pos.x + f.R.x * d, z = f.pos.z + f.R.z * d;
+      if (villages.some(v => Math.hypot(v.x - x, v.z - z) < v.radius)) continue;
+      if (items.some(other => other !== it && !BUSHES.includes(other.kind) && Math.hypot(other.x - x, other.z - z) < 3.6)) continue;
+      it.x = x;
+      it.z = z;
+      it.y = terrain.heightAt(x, z) - 0.25;
+      it.near = Math.abs(d);
+      it.movedRoadside = true;
+      moved.push({ s, side });
+    }
+    return moved.length;
   }
 
   update(camera, shadowCamera = null) {

@@ -15,6 +15,7 @@ import { Player } from './player.js';
 import { Autopilot } from './autopilot.js';
 import { ResolutionGovernor } from './resolution.js';
 import { Leaves, Sparks } from './effects.js';
+import { LeafPiles } from './leaf-piles.js';
 import { Birds } from './birds.js';
 import { AudioFx } from './audio.js';
 import { Hud } from './hud.js';
@@ -148,7 +149,11 @@ async function init() {
     if (Math.abs(rel) < 60) c.s = track.wrap(c.s + (c.dir > 0 ? 120 : -260));
   }
   scene.add(traffic.group);
-  const leaves = new Leaves(TX.makeLeafTexture());
+  const leafTexture = TX.makeLeafTexture();
+  const leafPiles = new LeafPiles(track, terrain, vegetation, villages, leafTexture, CHUNK);
+  scene.add(leafPiles.group, leafPiles.particles);
+  for (const mesh of leafPiles.group.children) cullByDistance(mesh, 280);
+  const leaves = new Leaves(leafTexture);
   scene.add(leaves.mesh);
   const sparks = new Sparks(TX.makeSparkTexture());
   scene.add(sparks.points);
@@ -160,7 +165,7 @@ async function init() {
   const menuPilot = new Autopilot(track, traffic, roadRules);
   menuPilot.engage(player, 70 / KMH);
 
-  world = { track, terrain, vegetation, player, traffic, leaves, sparks, birds, sky, lights, signs, villages, pilot, menuPilot, roadRules };
+  world = { track, terrain, vegetation, player, traffic, leaves, leafPiles, sparks, birds, sky, lights, signs, villages, pilot, menuPilot, roadRules };
   window.__game = { THREE, scene, camera, renderer, state, input, world, setInput, startGame, setCamera, setPaused, simulate, toggleAutopilot, orbitCam };
 
   await step('Rozgrzewanie silnika...', 0.95);
@@ -429,11 +434,13 @@ function driverInput(dt) {
 }
 
 function simulate(dt) {
-  const { player, traffic } = world;
+  const { player, traffic, leafPiles } = world;
   const events = [];
   const playing = state.mode === 'play';
   player.update(dt, driverInput(dt), events);
+  leafPiles.checkCar(player);
   traffic.update(dt, player);
+  leafPiles.checkTraffic(traffic.cars, player.s);
   traffic.collide(player, events);
   for (const ev of events) {
     if (ev.type === 'bump') {
@@ -552,7 +559,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (!world) return;
-  const { player, traffic, vegetation, leaves, sparks, birds, sky, lights } = world;
+  const { player, traffic, vegetation, leaves, leafPiles, sparks, birds, sky, lights } = world;
 
   if (state.mode === 'play' || state.mode === 'menu') {
     acc += dt;
@@ -578,6 +585,7 @@ function frame(now) {
   vegetation.update(camera, lights.sun.shadow.camera);
   if (perfFrames % 8 === 0) updateDistanceCulling();
   leaves.update(dt, camera, player.group.position.y);
+  if (state.mode !== 'pause') leafPiles.update(dt);
   birds.update(dt, camera, state.mode === 'play' || state.mode === 'menu');
 
   if (player.scrape > 0 && state.mode !== 'pause') {
