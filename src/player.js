@@ -64,6 +64,23 @@ export class Player {
     add(mergeParts(parts.detail), materials.detail);
     add(mergeParts(parts.head), materials.lights, false);
     add(mergeParts(parts.tail), this.tailMat, false);
+    this.wheelRadius = parts.wheels.radius;
+    this.wheelSpin = 0;
+    this.wheels = [];
+    for (const [sideIndex, sx] of [-1, 1].entries()) {
+      for (const [axleIndex, z] of parts.wheels.axles.entries()) {
+        const steer = new THREE.Group();
+        steer.position.set(sx * parts.wheels.x, this.wheelRadius, z);
+        const roll = new THREE.Group();
+        const wheel = new THREE.Mesh(parts.wheels.geometries[sideIndex], materials.detail);
+        wheel.name = `${axleIndex === parts.wheels.axles.length - 1 ? 'front' : 'rear'}-${sx < 0 ? 'right' : 'left'}-wheel`;
+        wheel.castShadow = wheel.receiveShadow = true;
+        roll.add(wheel);
+        steer.add(roll);
+        model.add(steer);
+        this.wheels.push({ steer, roll, front: axleIndex === parts.wheels.axles.length - 1 });
+      }
+    }
     // pure black on white, sampled slightly sharper so the text survives minification
     const plateMat = new THREE.MeshBasicMaterial({ map: plateTexture, toneMapped: false });
     plateMat.onBeforeCompile = (shader) => {
@@ -104,6 +121,11 @@ export class Player {
     this.throttle = 0;
     this.touchingRail = false;
     this.scrape = 0;
+    this.wheelSpin = 0;
+    for (const wheel of this.wheels) {
+      wheel.steer.rotation.y = 0;
+      wheel.roll.rotation.x = 0;
+    }
     copyMotion(this, this._previous);
     copyMotion(this, this.renderState);
   }
@@ -158,6 +180,7 @@ export class Player {
 
   updateVisual(dt, time, alpha = 1) {
     const t = clamp(alpha, 0, 1), previous = this._previous, visual = this.renderState;
+    const oldS = visual.s, oldD = visual.d;
     // Render between the last two physics steps, including across the loop seam.
     // The chase camera uses the same state so the car does not jitter against it.
     visual.s = this.track.wrap(previous.s + this.track.delta(previous.s, this.s) * t);
@@ -167,6 +190,17 @@ export class Player {
     visual.steer = lerp(previous.steer, this.steer, t);
     visual.throttle = lerp(previous.throttle, this.throttle, t);
     visual.braking = lerp(previous.braking, this.braking ? 1 : 0, t);
+    const ds = this.track.delta(oldS, visual.s);
+    const dd = visual.d - oldD;
+    if (Math.abs(visual.v) > 1e-4) {
+      this.wheelSpin = (this.wheelSpin + Math.sign(visual.v) * Math.hypot(ds, dd) / this.wheelRadius) % (Math.PI * 2);
+    }
+    // Local +X points left of the car, while positive input means a right turn.
+    const wheelSteer = -visual.steer * (0.08 + 0.34 / (1 + Math.abs(visual.v) / 7));
+    for (const wheel of this.wheels) {
+      wheel.roll.rotation.x = this.wheelSpin;
+      if (wheel.front) wheel.steer.rotation.y = wheelSteer;
+    }
     const F = this.track.frameAt(visual.s, this._f);
     const speed = Math.abs(visual.v);
     const direction = visual.v < 0 ? -1 : 1;

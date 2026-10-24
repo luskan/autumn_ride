@@ -40,6 +40,26 @@ for (const [type, spec] of Object.entries(CAR_TYPES)) {
       g.computeBoundingBox(); bounds.union(g.boundingBox);
       triangles += (g.index?.count ?? g.attributes.position.count) / 3;
     }
+    const { wheels } = parts;
+    assert.equal(wheels.radius, spec.wheelR);
+    assert.equal(wheels.axles.length, spec.truck ? 3 : 2);
+    for (const [sideIndex, sx] of [-1, 1].entries()) {
+      const g = wheels.geometries[sideIndex];
+      assert.equal(g.attributes.color.count, g.attributes.position.count);
+      for (const attr of Object.values(g.attributes)) {
+        assert.ok(Array.from(attr.array).every(Number.isFinite), 'wheel geometry contains a non-finite value');
+      }
+      const normals = g.attributes.normal;
+      for (let i = 0; i < normals.count; i++) {
+        const length = Math.hypot(normals.getX(i), normals.getY(i), normals.getZ(i));
+        assert.ok(Math.abs(length - 1) < 0.001, 'wheel has an invalid shading normal');
+      }
+      g.computeBoundingBox();
+      for (const z of wheels.axles) {
+        bounds.union(g.boundingBox.clone().translate(new THREE.Vector3(sx * wheels.x, wheels.radius, z)));
+      }
+      triangles += (g.index?.count ?? g.attributes.position.count) / 3 * wheels.axles.length;
+    }
     assert.ok(triangles < 2200, `${triangles} triangles exceeds the mobile model budget`);
     assert.ok(bounds.min.y > -0.001 && bounds.min.y < 0.02, 'tires must meet the ground');
     assert.ok(bounds.max.z < spec.L / 2 + 0.18 && bounds.min.z > -spec.L / 2 - 0.18, 'body must fit the collision length');

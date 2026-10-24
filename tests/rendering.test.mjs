@@ -93,6 +93,8 @@ test('cached tree bounds remain correct when the whole forest is transformed', (
 function traffic() {
   const track = {
     length: 1000, wrap: s => ((s % 1000) + 1000) % 1000,
+    delta: (a, b) => ((b - a + 1500) % 1000) - 500,
+    kappaAt: () => 0,
     frameAt(s, frame) {
       frame.pos.set(0, 0, -s); frame.T.set(0, 0, -1);
       frame.R.set(1, 0, 0); frame.U.set(0, 1, 0);
@@ -113,6 +115,7 @@ test('traffic compacts visible instances while preserving colors, parts and the 
   t.updateMeshes(camera);
   const meshes = t.meshes[first.type];
   assert.ok(meshes.every(mesh => mesh.count === 2));
+  assert.ok(t.wheelMeshes[first.type].every(mesh => mesh.count === 2 * t.wheelSpecs[first.type].axles.length));
   assert.equal(t.blobs.count, 2);
   const color = new THREE.Color();
   meshes[0].getColorAt(1, color);
@@ -121,6 +124,7 @@ test('traffic compacts visible instances while preserving colors, parts and the 
   first.s = 600; second.s = 30;
   t.updateMeshes(camera);
   assert.ok(meshes.every(mesh => mesh.count === 1));
+  assert.ok(t.wheelMeshes[first.type].every(mesh => mesh.count === t.wheelSpecs[first.type].axles.length));
   meshes[0].getColorAt(0, color);
   assert.ok(['r', 'g', 'b'].every(key => Math.abs(color[key] - second.paint[key]) < 1e-6));
   const matrix = new THREE.Matrix4();
@@ -142,6 +146,36 @@ test('a car behind the viewer remains rendered when its shadow is in the shadow 
   t.updateMeshes(camera, shadow);
   assert.equal(t.blobs.count, 1);
   assert.ok(t.meshes[car.type].every(mesh => mesh.count === 1));
+  assert.ok(t.wheelMeshes[car.type].every(mesh => mesh.count === t.wheelSpecs[car.type].axles.length));
   t.updateMeshes();
   assert.equal(t.blobs.count, 20, 'render culling must not remove cars from the simulation');
+});
+
+test('traffic wheel matrices roll independently and steer only the front axle', () => {
+  const t = traffic(), camera = view(), car = t.cars[0];
+  car.s = 20; car.v = 12; car.vd = 1.2; car.wheelSpin = 0.5;
+  t.updateMeshes(camera);
+  const { axles, x, radius } = t.wheelSpecs[car.type];
+  const body = new THREE.Matrix4(), wheel = new THREE.Matrix4();
+  t.meshes[car.type][0].getMatrixAt(0, body);
+  const toLocal = body.clone().invert();
+  const local = (axle) => {
+    t.wheelMeshes[car.type][1].getMatrixAt(axle, wheel);
+    return wheel.premultiply(toLocal).clone();
+  };
+  const rear = local(0), front = local(axles.length - 1);
+  assert.ok(Math.abs(rear.elements[12] - x) < 1e-6);
+  assert.ok(Math.abs(rear.elements[13] - radius) < 1e-6);
+  assert.ok(Math.abs(rear.elements[14] - axles[0]) < 1e-6);
+  const unroll = new THREE.Matrix4().makeRotationX(-car.wheelSpin);
+  const rearStraight = rear.clone().multiply(unroll);
+  const frontStraight = front.clone().multiply(unroll);
+  assert.ok(Math.abs(rearStraight.elements[8]) < 1e-6, 'rear axle stays straight');
+  const rearHeading = new THREE.Vector3(0, 0, 1).transformDirection(body.clone().multiply(rearStraight));
+  const frontHeading = new THREE.Vector3(0, 0, 1).transformDirection(body.clone().multiply(frontStraight));
+  assert.ok(frontHeading.x > rearHeading.x, 'front axle steers toward road right (+X) during a right lane change');
+
+  const before = car.wheelSpin;
+  t.update(0.1, { s: 800, d: 1.85, v: 0 });
+  assert.ok(Math.abs(car.wheelSpin - (before + car.v * 0.1 / radius) % (Math.PI * 2)) < 1e-9);
 });

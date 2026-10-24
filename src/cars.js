@@ -249,27 +249,31 @@ function finishParts(parts) {
   return parts;
 }
 
-function wheels(t, parts) {
+function wheelGeometry(r, sx) {
+  const pieces = [];
+  const profile = [[r * 0.63, -0.14], [r * 0.86, -0.14], [r, -0.09], [r, 0.09], [r * 0.86, 0.14], [r * 0.63, 0.14]];
+  pieces.push(prep(new THREE.LatheGeometry(profile.map(p => new THREE.Vector2(...p)), 12).rotateZ(Math.PI / 2), '#20242a'));
+  const face = (g, offset, color) => pieces.push(prep(g.rotateY(sx * Math.PI / 2).translate(sx * offset, 0, 0), color));
+  face(new THREE.CircleGeometry(r * 0.65, 12), 0.142, '#343c44');
+  face(new THREE.RingGeometry(r * 0.56, r * 0.67, 12), 0.146, ALLOY);
+  // Five tapered spokes leave visible dark pockets between the machined faces.
+  for (let i = 0; i < 5; i++) {
+    const a = i * Math.PI * 2 / 5 + 0.15;
+    const spoke = polygon([[-r * 0.1, r * 0.12], [r * 0.1, r * 0.12], [r * 0.065, r * 0.6], [-r * 0.065, r * 0.6]]).rotateZ(a);
+    face(spoke, 0.15, ALLOY);
+  }
+  face(new THREE.CircleGeometry(r * 0.2, 10), 0.153, '#7b8792');
+  face(new THREE.CircleGeometry(r * 0.1, 8), 0.155, '#bfc8ce');
+  // A single valve makes rotation readable even when the five spokes alias at speed.
+  face(new THREE.CircleGeometry(r * 0.045, 6).translate(r * 0.48, 0, 0), 0.157, '#73808a');
+  return mergeParts(pieces);
+}
+
+function wheels(t) {
   const xs = t.W / 2 - 0.12;
   const zs = t.truck ? [-3.6, -2.3, 3.0] : t.wheelZ;
   const r = t.wheelR;
-  for (const z of zs) {
-    for (const sx of [-1, 1]) {
-      const profile = [[r * 0.63, -0.14], [r * 0.86, -0.14], [r, -0.09], [r, 0.09], [r * 0.86, 0.14], [r * 0.63, 0.14]];
-      parts.detail.push(prep(new THREE.LatheGeometry(profile.map(p => new THREE.Vector2(...p)), 12).rotateZ(Math.PI / 2).translate(sx * xs, r, z), '#20242a'));
-      const face = (g, offset, color) => parts.detail.push(prep(g.rotateY(sx * Math.PI / 2).translate(sx * (xs + offset), r, z), color));
-      face(new THREE.CircleGeometry(r * 0.65, 12), 0.142, '#343c44');
-      face(new THREE.RingGeometry(r * 0.56, r * 0.67, 12), 0.146, ALLOY);
-      // Five tapered spokes leave visible dark pockets between the machined faces.
-      for (let i = 0; i < 5; i++) {
-        const a = i * Math.PI * 2 / 5 + 0.15;
-        const spoke = polygon([[-r * 0.1, r * 0.12], [r * 0.1, r * 0.12], [r * 0.065, r * 0.6], [-r * 0.065, r * 0.6]]).rotateZ(a);
-        face(spoke, 0.15, ALLOY);
-      }
-      face(new THREE.CircleGeometry(r * 0.2, 10), 0.153, '#7b8792');
-      face(new THREE.CircleGeometry(r * 0.1, 8), 0.155, '#bfc8ce');
-    }
-  }
+  return { x: xs, radius: r, axles: zs, geometries: [wheelGeometry(r, -1), wheelGeometry(r, 1)] };
 }
 
 // textured logo panels: both sides and the rear doors of the cargo box (uv kept, no colors)
@@ -330,7 +334,7 @@ function buildTruck(t) {
     parts.head.push(prep(box(0.34, 0.12, 0.06, sx * 0.85, 1.04, 4.64), '#fff6dc'));
   }
   parts.decal.push(...truckDecals(W));
-  wheels(t, parts);
+  parts.wheels = wheels(t);
   return finishParts(parts);
 }
 
@@ -507,7 +511,7 @@ export function buildCarParts(typeName, opts = {}) {
       }
     }
   }
-  wheels(t, parts);
+  parts.wheels = wheels(t);
   return finishParts(parts);
 }
 

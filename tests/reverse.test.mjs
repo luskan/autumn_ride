@@ -48,6 +48,7 @@ function run(p, seconds, input, traffic = null) {
 function trafficNear(p, dir, rel, speed = 0) {
   const traffic = Object.assign(Object.create(Traffic.prototype), { track: p.track, time: 0 });
   traffic.cars = [{
+    type: 'hatch', wheelSpin: 0,
     dir, s: p.track.wrap(p.s + rel), d: p.d, lane: p.d, targetD: p.d,
     v: speed, vDesired: speed, vd: 0, phase: 0,
     len: PLAYER.length, halfW: PLAYER.width / 2,

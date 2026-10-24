@@ -47,11 +47,14 @@ export class Traffic {
         type, dir, s, d: lane, lane, targetD: lane, vd: 0, v: vDesired, vDesired,
         len: t.L, halfW: t.W / 2, idx: counts[type] - 1, stun: 0, bumpCooldown: 0,
         prevRel: null, overtaken: false, phase: rnd() * 10,
+        wheelSpin: (s / t.wheelR) % (Math.PI * 2),
         paint: new THREE.Color(type === 'truck' ? pick(rnd, TRUCK_PAINTS) : pick(rnd, PAINTS)),
       });
     }
 
     this.meshes = {};
+    this.wheelMeshes = {};
+    this.wheelSpecs = {};
     this.bounds = {};
     this.renderSlots = {};
     this.renderCounts = {};
@@ -78,11 +81,28 @@ export class Traffic {
         decal.name = 'truck-logo';
         this.meshes[type].push(decal);
       }
+      this.wheelSpecs[type] = parts.wheels;
+      this.wheelMeshes[type] = parts.wheels.geometries.map((geometry) => {
+        const mesh = new THREE.InstancedMesh(geometry, materials.detail, counts[type] * parts.wheels.axles.length);
+        mesh.frustumCulled = false;
+        mesh.castShadow = mesh.receiveShadow = true;
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.group.add(mesh);
+        return mesh;
+      });
       const box = new THREE.Box3();
       for (const mesh of this.meshes[type]) {
         mesh.geometry.computeBoundingBox();
         box.union(mesh.geometry.boundingBox);
       }
+      for (const [sideIndex, sx] of [-1, 1].entries()) {
+        const geometry = parts.wheels.geometries[sideIndex];
+        geometry.computeBoundingBox();
+        for (const z of parts.wheels.axles) {
+          box.union(geometry.boundingBox.clone().translate(new THREE.Vector3(sx * parts.wheels.x, parts.wheels.radius, z)));
+        }
+      }
+      box.expandByScalar(0.12); // front wheels sweep slightly outside their straight-ahead bounds
       // Include the ground shadow's footprint when deciding whether to draw a car.
       const spec = CAR_TYPES[type];
       box.expandByPoint(new THREE.Vector3(-spec.W * 0.7, 0, -spec.L * 0.58));
@@ -109,6 +129,9 @@ export class Traffic {
     this._z = new THREE.Vector3();
     this._position = new THREE.Vector3();
     this._scale = new THREE.Vector3();
+    this._wheelRoll = new THREE.Matrix4();
+    this._wheelLocal = new THREE.Matrix4();
+    this._wheelWorld = new THREE.Matrix4();
   }
 
   update(dt, player) {
@@ -151,6 +174,7 @@ export class Traffic {
       const acc = target > c.v ? 2.6 : 7.5;
       c.v += clamp(target - c.v, -acc * dt, acc * dt);
       c.s = tr.wrap(c.s + c.dir * c.v * dt);
+      c.wheelSpin = (c.wheelSpin + c.v * dt / CAR_TYPES[c.type].wheelR) % (Math.PI * 2);
       c.targetD = targetD;
       c.vd = clamp((targetD - c.d) * 1.6, -2.4, 2.4);
       c.d = clamp(c.d + c.vd * dt, -(LIMIT_D - c.halfW), LIMIT_D - c.halfW);
@@ -260,6 +284,24 @@ export class Traffic {
       const index = this.renderCounts[c.type]++;
       const meshes = this.meshes[c.type];
       for (const mesh of meshes) mesh.setMatrixAt(index, m);
+      const wheels = this.wheelSpecs[c.type];
+      const axleCount = wheels.axles.length;
+      const wheelbase = wheels.axles[axleCount - 1] - wheels.axles[axleCount - 2];
+      const curve = typeof tr.kappaAt === 'function' ? tr.kappaAt(c.s) : 0;
+      // Local +X is car-left, so rightward curvature needs a negative Y rotation.
+      const wheelSteer = -clamp(c.dir * Math.atan(wheelbase * curve)
+        + 0.7 * Math.atan2(c.dir * c.vd, Math.max(Math.abs(c.v), 3)), -0.42, 0.42);
+      this._wheelRoll.makeRotationX(c.wheelSpin);
+      for (let sideIndex = 0; sideIndex < 2; sideIndex++) {
+        const sx = sideIndex === 0 ? -1 : 1;
+        const wheelMesh = this.wheelMeshes[c.type][sideIndex];
+        for (let axle = 0; axle < axleCount; axle++) {
+          this._wheelLocal.makeRotationY(axle === axleCount - 1 ? wheelSteer : 0)
+            .multiply(this._wheelRoll)
+            .setPosition(sx * wheels.x, wheels.radius, wheels.axles[axle]);
+          wheelMesh.setMatrixAt(index * axleCount + axle, this._wheelWorld.multiplyMatrices(m, this._wheelLocal));
+        }
+      }
       // Compact visible instances without changing the simulated traffic or its colors.
       if (this.renderSlots[c.type][index] !== c) {
         meshes[0].setColorAt(index, c.paint);
@@ -273,6 +315,15 @@ export class Traffic {
     for (const type in this.meshes) {
       for (const mesh of this.meshes[type]) {
         mesh.count = this.renderCounts[type];
+        mesh.visible = mesh.count > 0;
+        if (mesh.count) {
+          mesh.instanceMatrix.needsUpdate = true;
+          mesh.boundingSphere = null;
+          mesh.boundingBox = null;
+        }
+      }
+      for (const mesh of this.wheelMeshes[type]) {
+        mesh.count = this.renderCounts[type] * this.wheelSpecs[type].axles.length;
         mesh.visible = mesh.count > 0;
         if (mesh.count) {
           mesh.instanceMatrix.needsUpdate = true;

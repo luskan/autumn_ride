@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import * as THREE from 'three';
 import { Player, engineAccel, resistance } from '../src/player.js';
 import { createCarMaterials } from '../src/traffic.js';
 
@@ -87,4 +88,61 @@ test('braking and steering still tilt the body smoothly without lifting it off t
   assert.ok(p.pivot.rotation.x > 0);
   assert.ok(p.pivot.rotation.z < 0);
   assert.equal(p.pivot.position.y, 0.55);
+});
+
+test('wheel rotation follows rendered travel in both directions and freezes when the car stops moving', () => {
+  const p = player();
+  p.v = 12;
+  p.update(STEP, { throttle: resistance(12, 0) / engineAccel(12) }, []);
+  p.updateVisual(STEP, STEP, 1);
+  const forward = p.wheelSpin;
+  assert.ok(Math.abs(forward - 12 * STEP / p.wheelRadius) < 1e-9);
+  assert.ok(p.wheels.every(wheel => wheel.roll.rotation.x === forward));
+  p.updateVisual(STEP, 2 * STEP, 1);
+  assert.equal(p.wheelSpin, forward, 'rendering the same position again must not spin the wheels');
+
+  p.reset(100);
+  assert.equal(p.wheelSpin, 0);
+  p.v = -6;
+  p.update(STEP, { down: true }, []);
+  p.updateVisual(STEP, 3 * STEP, 1);
+  assert.ok(p.wheelSpin < 0);
+  assert.ok(Math.abs(p.wheelSpin - track.delta(100, p.renderState.s) / p.wheelRadius) < 1e-9);
+});
+
+test('only the front wheels steer, including while stationary and reversing', () => {
+  const p = player();
+  p.steer = 1;
+  p.updateVisual(0, 0, 1);
+  assert.equal(p.wheels.filter(wheel => wheel.front).length, 2);
+  assert.ok(p.wheels.filter(wheel => wheel.front).every(wheel => Math.abs(wheel.steer.rotation.y + 0.42) < 1e-9));
+  assert.ok(p.wheels.filter(wheel => !wheel.front).every(wheel => wheel.steer.rotation.y === 0));
+  p.steer = -1;
+  p.v = -6;
+  p.updateVisual(0, 0, 1);
+  assert.ok(p.wheels.filter(wheel => wheel.front).every(wheel => wheel.steer.rotation.y > 0));
+  assert.ok(p.wheels.filter(wheel => !wheel.front).every(wheel => wheel.steer.rotation.y === 0));
+});
+
+test('a right turn aims the front wheels toward the actual right side of the road', () => {
+  const physicalTrack = {
+    ...track,
+    frameAt(s, frame) {
+      track.frameAt(s, frame);
+      frame.R.set(-1, 0, 0); // +Z travel has its right side at -X
+      return frame;
+    },
+  };
+  const p = new Player(physicalTrack, materials, { env: null, plateTexture: null, shadowTexture: null });
+  p.reset(100);
+  const front = p.wheels.find(wheel => wheel.front);
+  const heading = new THREE.Vector3();
+  p.steer = 1;
+  p.updateVisual(0, 0, 1);
+  front.steer.getWorldDirection(heading);
+  assert.ok(heading.x < -0.1, 'right input must aim the wheel toward road right (-X)');
+  p.steer = -1;
+  p.updateVisual(0, 0, 1);
+  front.steer.getWorldDirection(heading);
+  assert.ok(heading.x > 0.1, 'left input must aim the wheel toward road left (+X)');
 });
