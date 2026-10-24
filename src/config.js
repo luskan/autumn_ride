@@ -24,6 +24,17 @@ export const WORLD = {
   fogDensity: 0.00105,
 };
 
+export const BIRDS = {
+  maxBirds: 48,
+  maxFlocks: 2,
+  interval: [20, 45], // seconds between autumn flybys
+  flightDistance: [380, 820],
+  roostDistance: [260, 550],
+  minRoadDistance: 150,
+  minCameraDistance: 180,
+  fadeDistance: [950, 1250],
+};
+
 // sun: low golden-hour sun
 const sunEl = (13 * Math.PI) / 180;
 const sunAz = (-35 * Math.PI) / 180;

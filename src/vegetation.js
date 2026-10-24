@@ -165,7 +165,10 @@ function treeGeo(sp, shape, lod) {
     const lumps = lod === 1 ? shape.lumps.slice(0, 4) : shape.lumps;
     lumps.forEach((l, i) => parts.push(lumpGeo(i === 0 && lod === 1 ? { ...l, r: l.r * 1.12 } : l, lod === 0 && i === 0 ? 2 : 1, env)));
   }
-  return mergeGeometries(parts);
+  const geometry = mergeGeometries(parts);
+  // A point safely inside the closed crown, including its distant LOD.
+  geometry.userData.canopy = { center: center.clone(), radius: Math.min(R, Ry) * 0.4, width: R, height: Ry };
+  return geometry;
 }
 
 // Shrub: a low dome of many small lumps with a few twigs, sunk slightly into the ground.
@@ -278,11 +281,13 @@ export class Vegetation {
     this.isBush = new Uint8Array(n);
     // grass grows around shrubs near the road so they sit in the field instead of on it
     this.bushSpots = [];
+    this.canopies = [];
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const col = new THREE.Color();
     this.items.forEach((it, idx) => {
       const variants = this.ids[it.kind];
-      const lods = variants[Math.floor(rnd() * variants.length) % variants.length];
+      const variant = Math.floor(rnd() * variants.length) % variants.length;
+      const lods = variants[variant];
       const id = bm.addInstance(lods[2]);
       e.set((rnd() - 0.5) * 0.08, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.08);
       q.setFromEuler(e);
@@ -298,6 +303,16 @@ export class Vegetation {
       const bush = BUSHES.includes(it.kind);
       this.isBush[idx] = bush ? 1 : 0;
       if (bush && it.near < 45) this.bushSpots.push({ x: it.x, y: it.y, z: it.z, w: it.scale });
+      const canopy = geos[it.kind][variant][2].userData.canopy;
+      if (canopy) {
+        const center = canopy.center.clone().applyMatrix4(m);
+        this.canopies.push({
+          x: center.x, y: center.y, z: center.z,
+          radius: canopy.radius * Math.min(s.x, s.y, s.z),
+          width: canopy.width * Math.max(s.x, s.z),
+          top: center.y + canopy.height * s.y,
+        });
+      }
     });
     this.mesh = bm;
     this.frame = 0;

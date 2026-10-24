@@ -91,6 +91,42 @@ try {
     return { first: hit ? hit.object.name || hit.object.type : 'nothing', text: !!mesh.material.map };
   });
   check('rear plate AUTOMAPA is visible behind the bumper', plate.first === 'rear-plate' && plate.text, `first hit from behind: ${plate.first}`);
+  const birdRendering = await g(() => {
+    const { world, camera, scene, renderer } = window.__game, birds = world.birds;
+    const savedFlocks = birds.flocks, savedTime = birds.time;
+    birds.flocks = [];
+    let pixels = 0, calls = 0;
+    try {
+      for (let i = 0; !birds.flocks.length && i < 8; i++) birds.spawn(camera, 'migration');
+      if (!birds.flocks.length) return { pixels, calls };
+      const gl = renderer.getContext(), width = gl.drawingBufferWidth, height = gl.drawingBufferHeight;
+      const on = new Uint8Array(width * height * 4), off = new Uint8Array(on.length);
+      for (const phase of [0.2, 0.4, 0.6, 0.8]) {
+        birds.time = birds.flocks[0].startedAt + birds.flocks[0].duration * phase;
+        birds.update(0, camera, false);
+        birds.group.visible = false;
+        renderer.render(scene, camera);
+        const baselineCalls = renderer.info.render.calls;
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, off);
+        birds.group.visible = true;
+        renderer.render(scene, camera);
+        calls = Math.max(calls, renderer.info.render.calls - baselineCalls);
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, on);
+        let changed = 0;
+        for (let i = 0; i < on.length; i += 4) {
+          if (Math.abs(on[i] - off[i]) + Math.abs(on[i + 1] - off[i + 1]) + Math.abs(on[i + 2] - off[i + 2]) > 12) changed++;
+        }
+        pixels = Math.max(pixels, changed);
+      }
+      return { pixels, calls };
+    } finally {
+      birds.flocks = savedFlocks;
+      birds.time = savedTime;
+      birds.group.visible = true;
+      birds.update(0, camera, false);
+    }
+  });
+  check('distant birds draw visible silhouettes using only three additional calls', birdRendering.pixels >= 5 && birdRendering.calls === 3, `${birdRendering.pixels} pixels, ${birdRendering.calls} calls`);
   await wait(1500);
   await shot('01-menu');
 
@@ -208,9 +244,11 @@ try {
   // pause
   await page.keyboard.press('KeyP');
   const sP = (await playerState()).s;
+  const birdTimeP = await g(() => window.__game.world.birds.time);
   await wait(700);
   const sP2 = (await playerState()).s;
   check('P pauses the game', sP === sP2 && (await g(() => window.__game.state.mode === 'pause')));
+  check('P also freezes bird animation and spawning', birdTimeP === (await g(() => window.__game.world.birds.time)));
   await shot('06-pause');
   await page.keyboard.press('KeyP');
 

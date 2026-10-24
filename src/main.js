@@ -15,6 +15,7 @@ import { Player } from './player.js';
 import { Autopilot } from './autopilot.js';
 import { ResolutionGovernor } from './resolution.js';
 import { Leaves, Sparks } from './effects.js';
+import { Birds } from './birds.js';
 import { AudioFx } from './audio.js';
 import { Hud } from './hud.js';
 import { setupTouchControls, setupMouseCamera } from './touch.js';
@@ -151,17 +152,20 @@ async function init() {
   scene.add(leaves.mesh);
   const sparks = new Sparks(TX.makeSparkTexture());
   scene.add(sparks.points);
+  const birds = new Birds(track, terrain, vegetation);
+  scene.add(birds.group);
 
   const pilot = new Autopilot(track, traffic, roadRules);
   // the menu shows the same autopilot driving at a relaxed pace
   const menuPilot = new Autopilot(track, traffic, roadRules);
   menuPilot.engage(player, 70 / KMH);
 
-  world = { track, terrain, vegetation, player, traffic, leaves, sparks, sky, lights, signs, villages, pilot, menuPilot, roadRules };
+  world = { track, terrain, vegetation, player, traffic, leaves, sparks, birds, sky, lights, signs, villages, pilot, menuPilot, roadRules };
   window.__game = { THREE, scene, camera, renderer, state, input, world, setInput, startGame, setCamera, setPaused, simulate, toggleAutopilot, orbitCam };
 
   await step('Rozgrzewanie silnika...', 0.95);
   updateCamera(0, true);
+  birds.update(0, camera);
   updateDistanceCulling();
   renderer.compile(scene, camera);
   state.loadMs = Math.round(performance.now() - t0);
@@ -540,7 +544,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (!world) return;
-  const { player, traffic, vegetation, leaves, sparks, sky, lights } = world;
+  const { player, traffic, vegetation, leaves, sparks, birds, sky, lights } = world;
 
   if (state.mode === 'play' || state.mode === 'menu') {
     acc += dt;
@@ -563,6 +567,7 @@ function frame(now) {
   vegetation.update(camera);
   if (perfFrames % 8 === 0) updateDistanceCulling();
   leaves.update(dt, camera, player.group.position.y);
+  birds.update(dt, camera, state.mode === 'play' || state.mode === 'menu');
 
   if (player.scrape > 0 && state.mode !== 'pause') {
     camF.T.set(0, 0, 1).applyQuaternion(player.group.quaternion);
