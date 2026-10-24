@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ROAD } from './config.js';
 import { mulberry32, pick, forestDensity } from './util.js';
-import { SIGN, signUV } from './textures.js';
+import { planSigns, signUV } from './road-signs.js';
 
 const frame = () => ({ pos: new THREE.Vector3(), T: new THREE.Vector3(), R: new THREE.Vector3(), U: new THREE.Vector3() });
 
@@ -163,98 +163,6 @@ export function buildHayBales(track, terrain, villages, groundTexture, seed) {
 
 // ---- road signs ----
 
-function planSigns(track, villages) {
-  const M = track.M;
-  const list = [];
-  const taken = [];
-  const free = (s, side, gap = 35) => !taken.some((t) => t.side === side && Math.abs(track.delta(t.s, s)) < gap);
-  const add = (o) => {
-    o.s = track.wrap(o.s);
-    if (!free(o.s, o.side, o.gap ?? 35)) return false;
-    taken.push({ s: o.s, side: o.side });
-    list.push(o);
-    return true;
-  };
-
-  // curve sections
-  const K = 1 / 420;
-  const curves = [];
-  let i0 = 0;
-  while (i0 < M && Math.abs(track.kappa[i0]) > K) i0++;
-  for (let n = 0; n < M; n++) {
-    const i = (i0 + n) % M;
-    const k = track.kappa[i];
-    if (Math.abs(k) > K) {
-      let j = n, peak = 0;
-      while (j < M && Math.abs(track.kappa[(i0 + j) % M]) > K && Math.sign(track.kappa[(i0 + j) % M]) === Math.sign(k)) {
-        peak = Math.max(peak, Math.abs(track.kappa[(i0 + j) % M]));
-        j++;
-      }
-      if ((j - n) * track.ds > 50) curves.push({ a: (i0 + n) * track.ds, b: (i0 + j) * track.ds, dir: Math.sign(k), peak });
-      n = j;
-    }
-  }
-
-  for (const c of curves) {
-    const right = c.dir > 0;
-    add({ s: c.a - 120, side: 1, dir: 1, cell: right ? SIGN.curveRight : SIGN.curveLeft, back: SIGN.backTriangle, size: [1.25, 1.25] });
-    add({ s: c.b + 120, side: -1, dir: -1, cell: right ? SIGN.curveLeft : SIGN.curveRight, back: SIGN.backTriangle, size: [1.25, 1.25] });
-    if (c.peak > 1 / 260) add({ s: c.a - 75, side: 1, dir: 1, cell: SIGN.limit70, back: SIGN.backCircle, size: [1.05, 1.05] });
-    if (c.peak > 1 / 300) {
-      // chevrons on the outer side, readable from both directions
-      const outer = right ? -1 : 1;
-      const len = c.b - c.a;
-      for (let t = 0.15; t <= 0.86; t += 0.14) {
-        add({
-          s: c.a + len * t, side: outer, dir: 1, low: true, gap: 8,
-          cell: right ? SIGN.chevronRight : SIGN.chevronLeft, back: right ? SIGN.chevronLeft : SIGN.chevronRight, size: [0.85, 0.85],
-        });
-      }
-    }
-  }
-
-  // long straights get a 90 limit
-  let run = 0;
-  for (let i = 0; i < M; i++) {
-    run = Math.abs(track.kappa[i]) < 1 / 900 ? run + track.ds : 0;
-    if (run > 450) {
-      add({ s: i * track.ds - 380, side: 1, dir: 1, cell: SIGN.limit90, back: SIGN.backCircle, size: [1.05, 1.05] });
-      run = -2000;
-    }
-  }
-
-  // wild animals where forest reaches the road
-  let deer = 0;
-  for (let i = 0; i < M && deer < 5; i += 50) {
-    if (forestDensity(track.px[i], track.pz[i]) > 0.4) {
-      if (add({ s: i * track.ds - 60, side: 1, dir: 1, cell: SIGN.deer, back: SIGN.backTriangle, size: [1.25, 1.25] })) {
-        deer++;
-        i += 1500;
-      }
-    }
-  }
-
-  // 50 where the road passes the villages
-  for (const v of villages) {
-    let best = 0, bestD = Infinity;
-    for (let i = 0; i < M; i += 10) {
-      const d = Math.hypot(track.px[i] - v.x, track.pz[i] - v.z);
-      if (d < bestD) { bestD = d; best = i; }
-    }
-    add({ s: best * track.ds - 260, side: 1, dir: 1, cell: SIGN.limit50, back: SIGN.backCircle, size: [1.05, 1.05] });
-    add({ s: best * track.ds + 260, side: 1, dir: 1, cell: SIGN.limit90, back: SIGN.backCircle, size: [1.05, 1.05] });
-  }
-
-  // town distances
-  let k = 0;
-  for (let s = 220; s < track.length - 200; s += 2700) {
-    for (let shift = 0; shift < 400; shift += 40) {
-      if (add({ s: s + shift, side: 1, dir: 1, wide: true, cell: k % 2 ? SIGN.distB : SIGN.distA, back: SIGN.backWide, size: [3.0, 1.5], gap: 45 })) break;
-    }
-    k++;
-  }
-  return list;
-}
 
 function quad(w, h, uv, flip) {
   const g = new THREE.PlaneGeometry(w, h);
@@ -268,12 +176,12 @@ function quad(w, h, uv, flip) {
   return g;
 }
 
-export function buildSigns(track, terrain, atlas, env, villages = []) {
+export function buildSigns(track, terrain, atlas, env, villages, rules) {
   const plates = [], poles = [];
   const f = frame();
   const m = new THREE.Matrix4();
   const X = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(), P = new THREE.Vector3();
-  const signs = planSigns(track, villages);
+  const signs = planSigns(track, villages, rules);
   for (const o of signs) {
     track.frameAt(o.s, f);
     const d = o.low ? o.side * (ROAD.rail + 0.35) : o.side * (ROAD.signD + (o.wide ? 0.9 : 0));
@@ -284,7 +192,7 @@ export function buildSigns(track, terrain, atlas, env, villages = []) {
     Z.set(-f.T.x * o.dir, 0, -f.T.z * o.dir).addScaledVector(f.R, -o.side * 0.14).normalize();
     X.crossVectors(Y, Z);
     const [w, h] = o.size;
-    const centerY = o.low ? roadY + 0.75 + h / 2 : roadY + (o.wide ? 1.6 : 1.75) + h / 2;
+    const centerY = (o.low ? roadY + 0.75 + h / 2 : roadY + (o.wide ? 1.6 : 1.75) + h / 2) + (o.lift || 0);
     m.makeBasis(X, Y, Z).setPosition(P.x, centerY, P.z);
     plates.push(quad(w, h, signUV(o.cell), false).applyMatrix4(m));
     const back = quad(w, h, signUV(o.back), true);

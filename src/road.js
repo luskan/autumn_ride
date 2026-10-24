@@ -48,12 +48,64 @@ function ribbon(track, cols, step, vScale, i0, i1) {
 
 const both = (make) => mergeGeometries([make(-1), make(1)]);
 
-export function buildRoad(track, { roadTexture, groundTexture, env }) {
+// One paint mesh per road chunk, not one mesh per dash. Sample the same triangles
+// as the asphalt, including its crown, so the paint cannot float over a crest.
+export function buildCenterMarkings(track, rules, i0, i1) {
+  const positions = [], indices = [];
+  const period = roadPeriod(track);
+  const begin = i0 * track.ds, end = i1 * track.ds;
+  const strip = (a, b, center, width = 0.14) => {
+    if (b - a < 1e-5) return;
+    const rows = [a];
+    for (let s = (Math.floor(a / track.ds) + 1) * track.ds; s < b - 1e-6; s += track.ds) rows.push(s);
+    rows.push(b);
+    const base = positions.length / 3;
+    for (const s of rows) {
+      const f = s / track.ds, i = Math.floor(f) % track.M, j = (i + 1) % track.M, t = f - Math.floor(f);
+      for (const u of [center - width / 2, center + width / 2]) {
+        const h = 0.04 * (1 - Math.abs(u) / ROAD.half) + 0.004;
+        for (const [p, r, up] of [[track.px, track.rx, track.ux], [track.py, null, track.uy], [track.pz, track.rz, track.uz]]) {
+          const a = p[i] + (r ? r[i] * u : 0) + up[i] * h;
+          const b = p[j] + (r ? r[j] * u : 0) + up[j] * h;
+          positions.push(a + (b - a) * t);
+        }
+      }
+    }
+    for (let row = 0; row < rows.length - 1; row++) {
+      const a = base + row * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  };
+  const dashed = (a, b, center, warning) => {
+    const painted = period * (warning ? 2 / 3 : 1 / 3);
+    for (let s = Math.floor(a / period) * period; s < b; s += period) strip(Math.max(a, s), Math.min(b, s + painted), center);
+  };
+  for (const run of rules.runs) {
+    const a = Math.max(begin, run.a), b = Math.min(end, run.b);
+    if (a >= b) continue;
+    if (!run.mask) dashed(a, b, 0, run.warning !== 0);
+    else {
+      for (const dir of [-1, 1]) {
+        const bit = dir > 0 ? 1 : 2;
+        if (run.mask & bit) strip(a, b, dir * 0.15);
+        else dashed(a, b, dir * 0.15, (run.warning & bit) !== 0);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+export function buildRoad(track, { roadTexture, groundTexture, env, rules }) {
   const group = new THREE.Group();
   group.name = 'road';
   const period = roadPeriod(track);
   const H = ROAD.half;
   const roadMat = new THREE.MeshLambertMaterial({ map: roadTexture });
+  const paintMat = new THREE.MeshLambertMaterial({ color: '#eceae2', polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const skirtMat = new THREE.MeshLambertMaterial({ color: '#c09c56', map: groundTexture });
   const railMat = new THREE.MeshStandardMaterial({
     color: '#c9cdd2', metalness: 0.75, roughness: 0.34, side: THREE.DoubleSide, envMap: env, envMapIntensity: 1.0,
@@ -78,6 +130,7 @@ export function buildRoad(track, { roadTexture, groundTexture, env }) {
       return mesh;
     };
     add(ribbon(track, [{ u: -H, h: 0, tu: 0 }, { u: 0, h: 0.04, tu: 0.5 }, { u: H, h: 0, tu: 1 }], 1, period, i0, i1), roadMat, 'asphalt', false);
+    add(buildCenterMarkings(track, rules, i0, i1), paintMat, 'center-markings', false);
 
     // grassy embankment skirts hide the step between road and terrain
     add(both((sgn) => {

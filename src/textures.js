@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ROAD } from './config.js';
 import { mulberry32 } from './util.js';
+import { SIGN, SIGN_COLS, SIGN_ROWS } from './road-signs.js';
 
 const rnd = mulberry32(777);
 
@@ -71,11 +72,10 @@ function speckle(g, x, y, w, h, count, colors, rMin, rMax, alpha = 1) {
 }
 
 // Road surface: x = across the road (-half..half), y = along the road (one dash period)
-export function makeRoadTexture(period, anisotropy) {
+export function makeRoadTexture(anisotropy) {
   const W = 1024, H = 1024;
   const [c, g] = canvas(W, H);
   const ux = (u) => ((u + ROAD.half) / (2 * ROAD.half)) * W;
-  const vy = (m) => (m / period) * H;
 
   g.fillStyle = '#8b8272';
   g.fillRect(0, 0, W, H);
@@ -108,11 +108,9 @@ export function makeRoadTexture(period, anisotropy) {
     g.fillRect(ux(u0), y0, ux(u1) - ux(u0), y1 - y0);
   };
   const white = '#eceae2';
-  const yellow = '#ebb420';
   band(-ROAD.edgeLine - 0.16, -ROAD.edgeLine, white);
   band(ROAD.edgeLine, ROAD.edgeLine + 0.16, white);
-  band(-0.21, -0.08, yellow);
-  band(0.08, 0.21, yellow, 0, vy(4));
+  // Center lines are generated from RoadRules, independently of this repeating asphalt.
   // paint wear
   speckle(g, 0, 0, W, H, 9000, ['#5b5c60', '#6a6b6f'], 0.8, 1.6, 0.35);
 
@@ -361,18 +359,7 @@ export function makePlateTexture(text) {
   return toTexture(c, { anisotropy: 16 });
 }
 
-// ---- road sign atlas: 4x4 cells of 256 px ----
-export const SIGN = {
-  limit50: [0, 0], limit70: [1, 0], limit90: [2, 0], curveRight: [3, 0],
-  curveLeft: [0, 1], deer: [1, 1], chevronRight: [2, 1], chevronLeft: [3, 1],
-  backCircle: [0, 2], backTriangle: [1, 2], backRect: [2, 2], backWide: [3, 2],
-  distA: [0, 3, 2], distB: [2, 3, 2],
-};
-
-export function signUV(cell) {
-  const [cx, cy, span = 1] = cell;
-  return { u0: cx / 4, u1: (cx + span) / 4, v0: 1 - (cy + 1) / 4, v1: 1 - cy / 4 };
-}
+// ---- road sign atlas: 4x5 cells of 256 px ----
 
 function trianglePath(g, cx, cy, side, radius) {
   const h = (side * Math.sqrt(3)) / 2;
@@ -504,6 +491,37 @@ function chevrons(g, x, y, dir) {
   g.restore();
 }
 
+function overtakingSign(g, x, y, end = false) {
+  g.save();
+  g.translate(x + 128, y + 128);
+  g.fillStyle = '#ffffff';
+  g.beginPath(); g.arc(0, 0, 124, 0, Math.PI * 2); g.fill();
+  g.fillStyle = end ? '#a3a3a3' : '#d2161e';
+  g.beginPath(); g.arc(0, 0, 118, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ffffff';
+  g.beginPath(); g.arc(0, 0, end ? 111 : 91, 0, Math.PI * 2); g.fill();
+  const car = (cx, color) => {
+    g.fillStyle = color;
+    g.beginPath();
+    g.moveTo(cx - 24, 24); g.lineTo(cx - 24, -8); g.lineTo(cx - 16, -37);
+    g.lineTo(cx + 16, -37); g.lineTo(cx + 24, -8); g.lineTo(cx + 24, 24); g.closePath(); g.fill();
+    g.fillRect(cx - 21, 20, 10, 13); g.fillRect(cx + 11, 20, 10, 13);
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.moveTo(cx - 13, -29); g.lineTo(cx + 13, -29);
+    g.lineTo(cx + 17, -12); g.lineTo(cx - 17, -12); g.closePath(); g.fill();
+    g.fillRect(cx - 16, 5, 8, 5); g.fillRect(cx + 8, 5, 8, 5);
+  };
+  car(-37, end ? '#929292' : '#d2161e'); car(37, end ? '#929292' : '#171717');
+  if (end) {
+    g.beginPath(); g.arc(0, 0, 112, 0, Math.PI * 2); g.clip();
+    g.strokeStyle = '#3d3d3d'; g.lineWidth = 5;
+    for (const shift of [-36, -18, 0, 18, 36]) {
+      g.beginPath(); g.moveTo(-130, 130 + shift); g.lineTo(130, -130 + shift); g.stroke();
+    }
+  }
+  g.restore();
+}
+
 function distanceSign(g, x, y, rows) {
   const w = 512, h = 256;
   g.fillStyle = '#ffffff';
@@ -528,7 +546,7 @@ function distanceSign(g, x, y, rows) {
 
 export function makeSignAtlas(anisotropy) {
   const S = 256;
-  const [c, g] = canvas(S * 4, S * 4);
+  const [c, g] = canvas(S * SIGN_COLS, S * SIGN_ROWS);
   const at = (cell) => [cell[0] * S, cell[1] * S];
 
   limitSign(g, ...at(SIGN.limit50), '50');
@@ -539,6 +557,8 @@ export function makeSignAtlas(anisotropy) {
   warningSign(g, ...at(SIGN.deer), deer);
   chevrons(g, ...at(SIGN.chevronRight), 1);
   chevrons(g, ...at(SIGN.chevronLeft), -1);
+  overtakingSign(g, ...at(SIGN.noOvertaking));
+  overtakingSign(g, ...at(SIGN.endOvertaking), true);
 
   // backs of signs
   let [x, y] = at(SIGN.backCircle);

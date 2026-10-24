@@ -57,6 +57,20 @@ try {
   check('game loads to the start screen', true, `${info.loadMs} ms`);
   check('road signs are placed along the road', info.signs >= 15, `${info.signs} signs`);
   check('traffic exists in both directions', info.cars > 20);
+  const markingInfo = await g(() => {
+    const { world, scene } = window.__game;
+    const rules = world.roadRules;
+    const signs = world.signs.userData.signs;
+    return {
+      types: [...new Set(rules.runs.map(run => rules.markingAt((run.a + run.b) / 2)))],
+      restrictions: rules.restrictions.length,
+      starts: signs.filter(sign => sign.kind === 'no-overtaking').length,
+      ends: signs.filter(sign => sign.kind === 'end-overtaking').length,
+      paintMeshes: scene.getObjectByName('road').children.filter(mesh => mesh.name === 'center-markings').length,
+    };
+  });
+  check('road shows dashed, warning, solid and directional markings', markingInfo.types.length === 5 && markingInfo.paintMeshes > 0, markingInfo.types.join(', '));
+  check('every passing restriction has matching start and end signs', markingInfo.restrictions > 0 && markingInfo.starts === markingInfo.restrictions && markingInfo.ends === markingInfo.restrictions, `${markingInfo.restrictions} directional sections`);
   const logos = await g(() => {
     const m = window.__game.scene.getObjectByName('truck-logo');
     const trucks = window.__game.world.traffic.cars.filter((c) => c.type === 'truck').length;
@@ -312,7 +326,14 @@ try {
   check('ArrowUp raises the autopilot speed', expected > 0.5 && Math.abs(a2.set - a1.set - expected) < 0.6, `${(a1.set * 3.6).toFixed(0)} -> ${(a2.set * 3.6).toFixed(0)} km/h`);
 
   // overtakes a slow car when the oncoming lane is free, then returns to its lane
-  await clearAround(900);
+  const prepareOvertake = () => g(() => {
+    const w = window.__game.world, r = w.roadRules;
+    const index = r.openDistances[1].indexOf(Math.max(...r.openDistances[1]));
+    w.player.reset(index * r.step + 5); w.player.v = 25;
+    w.pilot.engage(w.player, 25);
+    for (const c of w.traffic.cars) if (Math.abs(w.track.delta(w.player.s, c.s)) < 1000) c.s = w.track.wrap(c.s + 2000);
+  });
+  await prepareOvertake();
   await g(() => {
     const w = window.__game.world;
     w.pilot.setSpeed = 25;
@@ -335,7 +356,7 @@ try {
   check('autopilot overtakes a slower car and returns to its lane', a3.rel < -15 && a3.d > 1.5 && a3.bumps === 0 && a3.active, `rel ${a3.rel.toFixed(1)} m, d ${a3.d.toFixed(2)}, bumps ${a3.bumps}`);
 
   // waits behind the slow car while an oncoming car is near, overtakes afterwards
-  await clearAround(900);
+  await prepareOvertake();
   await g(() => {
     const w = window.__game.world;
     const slow = window.__slow;
@@ -363,6 +384,24 @@ try {
   check('autopilot does not pull out into oncoming traffic', a4.metD !== null && a4.metD > 1.2 && a4.bumps === 0, `lane offset when the oncoming car passed: ${a4.metD?.toFixed(2)}, bumps ${a4.bumps}`);
   check('autopilot overtakes once the oncoming car has passed', a4.rel < -15, `rel ${a4.rel.toFixed(1)} m`);
 
+  const follows = await g(() => {
+    const G = window.__game, w = G.world;
+    const section = w.roadRules.restrictions.find(section => section.dir === 1 && section.length > 700);
+    w.player.reset(section.s + 50); w.player.v = 20;
+    for (const c of w.traffic.cars) if (Math.abs(w.track.delta(w.player.s, c.s)) < 1000) c.s = w.track.wrap(c.s + 2000);
+    const lead = window.__slow;
+    lead.s = w.track.wrap(w.player.s + 55); lead.d = lead.lane = 1.85; lead.v = lead.vDesired = 12;
+    w.pilot.engage(w.player, 25);
+    const bumps = G.state.stats.bumps;
+    let pulledOut = false;
+    for (let i = 0; i < 120 * 20; i++) {
+      G.simulate(1 / 120);
+      pulledOut ||= w.pilot.state === 'passing' || w.player.d < 1.2;
+    }
+    return { pulledOut, bumps: G.state.stats.bumps - bumps, speed: w.player.v };
+  });
+  check('autopilot follows a slower car through a no-passing section', !follows.pulledOut && follows.bumps === 0 && follows.speed < 14, `${(follows.speed * 3.6).toFixed(0)} km/h`);
+
   // steering takes over
   await page.keyboard.down('ArrowLeft');
   await wait(150);
@@ -380,20 +419,22 @@ try {
     pilot.engage(player);
     const st = G.state.stats;
     const b0 = st.bumps, o0 = st.overtakes, d0 = player.distance;
-    let steps = 0, rail = 0, minD = Infinity, maxD = -Infinity;
+    let steps = 0, rail = 0, minD = Infinity, maxD = -Infinity, lineViolations = 0;
     while (player.distance - d0 < track.length && steps < 120 * 900) {
       G.simulate(1 / 120);
       steps++;
       if (player.touchingRail) rail++;
       minD = Math.min(minD, player.d);
       maxD = Math.max(maxD, player.d);
+      if (player.d < 1.11 && !G.world.roadRules.allowsPassing(player.s + 2.05)) lineViolations++;
     }
     pilot.disengage();
-    return { km: (player.distance - d0) / 1000, minutes: steps / 7200, bumps: st.bumps - b0, overtakes: st.overtakes - o0, rail, minD, maxD };
+    return { km: (player.distance - d0) / 1000, minutes: steps / 7200, bumps: st.bumps - b0, overtakes: st.overtakes - o0, rail, minD, maxD, lineViolations };
   });
   console.log('autopilot lap', JSON.stringify(lap));
   check('autopilot drives a full lap in traffic', lap.km > 8.5 && lap.rail === 0 && lap.bumps <= 1, `${lap.km.toFixed(2)} km in ${lap.minutes.toFixed(1)} min, bumps ${lap.bumps}, rail contacts ${lap.rail}`);
-  check('autopilot overtakes on its own during the lap', lap.overtakes >= 3, `${lap.overtakes} overtakes, d ${lap.minD.toFixed(2)}..${lap.maxD.toFixed(2)}`);
+  check('autopilot overtakes on permitted sections during the lap', lap.overtakes >= 1, `${lap.overtakes} overtakes, d ${lap.minD.toFixed(2)}..${lap.maxD.toFixed(2)}`);
+  check('autopilot returns before every solid line during the lap', lap.lineViolations === 0, `${lap.lineViolations} violations`);
 
   // ---- phones in landscape: the start menu fits, start goes full screen where the browser allows it ----
   for (const [name, width, height, ios] of [['iPhone, Safari bars visible', 750, 340, true], ['Android phone', 740, 360, false]]) {

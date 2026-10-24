@@ -16,9 +16,10 @@ const MERGE_MARGIN = 7; // m of clearance in front of the overtaken car before m
 // States: lane (keep right, follow slower cars), passing (in the left lane),
 // returning (merging back right), abort (overtake cancelled, drop back and merge).
 export class Autopilot {
-  constructor(track, traffic) {
+  constructor(track, traffic, roadRules) {
     this.track = track;
     this.traffic = traffic;
+    this.roadRules = roadRules;
     this.active = false;
     this.setSpeed = AUTO_MIN;
     this.state = 'lane';
@@ -86,7 +87,7 @@ export class Autopilot {
   }
 
   // evasive: braking is no longer enough, so swerve even without the usual pull-out room
-  canPass(lead, v, evasive = false) {
+  canPass(lead, v, evasive = false, s) {
     // room to pull out without clipping the lead while closing in on it
     if (!evasive && lead.rel - (lead.len + L) / 2 < Math.max(0, v - lead.v) * 1.2 + 4) return null;
     // the whole column of closely spaced cars has to be passed at once
@@ -102,6 +103,10 @@ export class Autopilot {
     if (dv < (evasive ? 0.5 : 2.5)) return null;
     const { T, D } = this.passPlan(end, Math.max(v, this.setSpeed), dv);
     if (T > 16) return null;
+    // Reserve room for acceleration and the complete return, including the car's
+    // front bumper. Even an evasive overtake may not start across a solid line.
+    const reserve = Math.max(v, this.setSpeed) * 3 + L + Math.max(0, this.setSpeed - v) * 3;
+    if (this.roadRules && !this.roadRules.canCompletePass(s, D + reserve)) return null;
     // somebody else already in the left lane ahead
     for (const c of this.traffic.cars) {
       if (c.dir > 0 && c.d < 0 && c.rel > -5 && c.rel < D) return null;
@@ -138,7 +143,7 @@ export class Autopilot {
       const evasive = closing > 0 && gap < (closing * closing) / (2 * 9) + 3;
       // pull out from a natural following distance, earlier when going faster
       if (gap < 20 + v * 1.3 && (this.cooldown <= 0 || evasive)) {
-        const end = this.canPass(lead, v, evasive);
+        const end = this.canPass(lead, v, evasive, player.s);
         if (end) {
           this.state = 'passing';
           this.passEnd = end;
@@ -156,7 +161,9 @@ export class Autopilot {
       } else if (!this.rush) {
         // keep checking: traffic may have changed since the decision
         const { T, D } = this.passPlan(end, Math.max(v, this.setSpeed), this.setSpeed - end.v);
-        if (!this.oncomingClear(T, D, 0.5)) {
+        const roadClear = !this.roadRules || this.roadRules.canCompletePass(player.s, D + Math.max(v, this.setSpeed) * 3 + L);
+        if (!roadClear) this.state = 'abort';
+        else if (!this.oncomingClear(T, D, 0.5)) {
           // finish with a short merge gap if that beats the oncoming car, otherwise drop back
           const rem = end.rel + (end.len + L) / 2 + 2;
           const finish = rem / Math.max(v - end.v, 0.5) + 1.2;

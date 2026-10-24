@@ -5,7 +5,8 @@ import { nextFrame, damp, clamp } from './util.js';
 import { buildTrack } from './track.js';
 import { Terrain } from './terrain.js';
 import * as TX from './textures.js';
-import { buildRoad, roadPeriod, CHUNK } from './road.js';
+import { buildRoad, CHUNK } from './road.js';
+import { buildRoadRules } from './road-rules.js';
 import { patchFog, createSky, createEnvironment, createLights, updateSun } from './sky.js';
 import { Vegetation, buildGrass } from './vegetation.js';
 import { planVillages, buildVillages, buildHayBales, buildSigns } from './props.js';
@@ -110,7 +111,8 @@ async function init() {
   const env = createEnvironment(renderer);
   const localGround = groundTex.clone();
   localGround.needsUpdate = true;
-  const road = buildRoad(track, { roadTexture: TX.makeRoadTexture(roadPeriod(track), aniso), groundTexture: localGround, env });
+  const roadRules = buildRoadRules(track, terrain);
+  const road = buildRoad(track, { roadTexture: TX.makeRoadTexture(aniso), groundTexture: localGround, env, rules: roadRules });
   scene.add(road.group);
   for (const c of road.chunks) cullByDistance(c.posts, 650);
 
@@ -126,7 +128,7 @@ async function init() {
   await step('Stawianie znaków...', 0.72);
   scene.add(buildVillages(villages, terrain));
   scene.add(buildHayBales(track, terrain, villages, localGround, 41));
-  const signs = buildSigns(track, terrain, TX.makeSignAtlas(aniso), env, villages);
+  const signs = buildSigns(track, terrain, TX.makeSignAtlas(aniso), env, villages, roadRules);
   scene.add(signs);
 
   await step('Wyprowadzanie aut...', 0.85);
@@ -150,12 +152,12 @@ async function init() {
   const sparks = new Sparks(TX.makeSparkTexture());
   scene.add(sparks.points);
 
-  const pilot = new Autopilot(track, traffic);
+  const pilot = new Autopilot(track, traffic, roadRules);
   // the menu shows the same autopilot driving at a relaxed pace
-  const menuPilot = new Autopilot(track, traffic);
+  const menuPilot = new Autopilot(track, traffic, roadRules);
   menuPilot.engage(player, 70 / KMH);
 
-  world = { track, terrain, vegetation, player, traffic, leaves, sparks, sky, lights, signs, villages, pilot, menuPilot };
+  world = { track, terrain, vegetation, player, traffic, leaves, sparks, sky, lights, signs, villages, pilot, menuPilot, roadRules };
   window.__game = { THREE, scene, camera, renderer, state, input, world, setInput, startGame, setCamera, setPaused, simulate, toggleAutopilot, orbitCam };
 
   await step('Rozgrzewanie silnika...', 0.95);
