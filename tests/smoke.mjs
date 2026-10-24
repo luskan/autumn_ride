@@ -74,9 +74,56 @@ try {
   const logos = await g(() => {
     const m = window.__game.scene.getObjectByName('truck-logo');
     const trucks = window.__game.world.traffic.cars.filter((c) => c.type === 'truck').length;
-    return { mesh: !!m, count: m ? m.count : 0, trucks, textured: !!(m && m.material.map && m.material.map.image) };
+    return { mesh: !!m, capacity: m ? m.instanceMatrix.count : 0, count: m ? m.count : 0, trucks, textured: !!(m && m.material.map && m.material.map.image) };
   });
-  check('trucks carry the AutoMapa logo panels', logos.mesh && logos.textured && logos.count === logos.trucks && logos.trucks > 0, `${logos.count} trucks`);
+  check('trucks carry the AutoMapa logo panels', logos.mesh && logos.textured && logos.capacity === logos.trucks && logos.trucks > 0, `${logos.count}/${logos.trucks} trucks currently rendered`);
+  const renderComparison = await g(() => {
+    const G = window.__game, { THREE: T, scene, renderer, camera } = G;
+    const { vegetation, traffic, lights } = G.world, source = vegetation.mesh;
+    const vertices = source.geometries.reduce((n, geo) => n + geo.attributes.position.count, 0);
+    const indices = source.geometries.reduce((n, geo) => n + geo.index.count, 0);
+    const reference = new T.BatchedMesh(source.instanceCount, vertices, indices, source.material);
+    reference.sortObjects = false; reference.castShadow = reference.receiveShadow = true;
+    const shapes = source.geometries.map(geo => reference.addGeometry(geo));
+    const matrix = new T.Matrix4(), color = new T.Color();
+    for (let id = 0; id < source.instanceCount; id++) {
+      reference.addInstance(shapes[source.getGeometryIdAt(id)]);
+      reference.setMatrixAt(id, source.getMatrixAt(id, matrix));
+      reference.setColorAt(id, source.getColorAt(id, color));
+    }
+    scene.add(reference);
+    const gl = renderer.getContext(), width = gl.drawingBufferWidth, height = gl.drawingBufferHeight;
+    const optimized = new Uint8Array(width * height * 4), original = new Uint8Array(optimized.length);
+    const savedRotation = camera.quaternion.clone(), cases = [];
+    try {
+      for (const angle of [0, Math.PI / 2, Math.PI]) {
+        camera.quaternion.copy(savedRotation); camera.rotateY(angle); camera.updateMatrixWorld();
+        source.visible = true; reference.visible = false;
+        source.updateVisibility(camera, lights.sun.shadow.camera);
+        traffic.updateMeshes(camera, lights.sun.shadow.camera);
+        const renderedCars = traffic.blobs.count;
+        renderer.render(scene, camera);
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, optimized);
+        source.visible = false; reference.visible = true;
+        traffic.updateMeshes(); renderer.render(scene, camera);
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, original);
+        let changed = 0;
+        for (let i = 0; i < original.length; i += 4) {
+          const delta = Math.abs(original[i] - optimized[i]) + Math.abs(original[i + 1] - optimized[i + 1]) + Math.abs(original[i + 2] - optimized[i + 2]);
+          if (delta > 3) changed++;
+        }
+        cases.push({ changed, fraction: changed / (width * height), renderedCars });
+      }
+    } finally {
+      scene.remove(reference); reference.dispose(); source.visible = true;
+      camera.quaternion.copy(savedRotation); camera.updateMatrixWorld();
+      source.updateVisibility(camera, lights.sun.shadow.camera);
+      traffic.updateMeshes(camera, lights.sun.shadow.camera);
+    }
+    return { cases, cars: traffic.cars.length };
+  });
+  check('optimized trees, cars and shadows match the full scene from three viewing directions', renderComparison.cases.every(c => c.fraction < 0.0005), JSON.stringify(renderComparison.cases));
+  check('cars outside both viewing and shadow frusta skip rendering', renderComparison.cases.every(c => c.renderedCars < renderComparison.cars));
   // the textured rear plate must sit outside the car body: a ray from behind hits it first
   const plate = await g(() => {
     const { THREE, world } = window.__game;
@@ -152,10 +199,13 @@ try {
   await page.keyboard.up('ArrowDown');
   check('ArrowDown slows down', p3.v < p2.v - 10, `${p2.kmh.toFixed(0)} -> ${p3.kmh.toFixed(0)} km/h`);
   await page.keyboard.down('ArrowDown');
-  await wait(4000);
+  await page.waitForFunction(() => window.__game.world.player.v < -0.5, null, { timeout: 8000 });
+  await wait(300);
+  const reverseHud = await g(() => ({ speed: Number(document.getElementById('hud-speed').textContent), unit: document.getElementById('hud-unit').textContent }));
   await page.keyboard.up('ArrowDown');
   const p3b = await playerState();
-  check('braking stops the car without reversing', p3b.v >= 0 && p3b.v < 0.5, `${p3b.kmh.toFixed(1)} km/h`);
+  check('holding ArrowDown stops the car and engages reverse', p3b.v < -0.5 && p3b.v >= -6, `${p3b.kmh.toFixed(1)} km/h`);
+  check('the speedometer shows positive speed and R while reversing', reverseHud.speed > 0 && reverseHud.unit === 'R · km/h', JSON.stringify(reverseHud));
 
   // steering + road limits (move away from traffic first)
   await g(() => {
@@ -230,6 +280,17 @@ try {
   const b2 = await g(() => ({ bumps: window.__game.state.stats.bumps, v: window.__game.world.player.v }));
   check('head-on contact is a harmless bump', b2.bumps > b1, `bumps ${b1} -> ${b2.bumps}`);
   await shot('05-head-on');
+
+  const hitAt = (await playerState()).s;
+  await page.keyboard.down('ArrowDown');
+  await page.waitForFunction(() => window.__game.world.player.v < -3, null, { timeout: 5000 });
+  await page.keyboard.up('ArrowDown');
+  const reversed = await g((s) => {
+    const { player, track } = window.__game.world;
+    return { v: player.v, moved: track.delta(s, player.s) };
+  }, hitAt);
+  check('the player can reverse away after a head-on bump', reversed.v < -2 && reversed.moved < -1, `${reversed.moved.toFixed(1)} m`);
+  await shot('05-reverse');
 
   // the car can drive on afterwards: steer back into our lane, then accelerate
   await page.keyboard.down('ArrowRight');
@@ -546,6 +607,21 @@ try {
       await mp.waitForTimeout(3500);
       const yaw2 = await mp.evaluate(() => window.__game.orbitCam.yaw);
       check(`${name}: the camera swings back behind the car when let go`, Math.abs(yaw2) < 0.1, `yaw ${yaw2.toFixed(2)}`);
+      await mp.evaluate(() => {
+        const { player, traffic, track } = window.__game.world;
+        player.reset(player.s);
+        for (const c of traffic.cars) if (Math.abs(track.delta(player.s, c.s)) < 500) c.s = track.wrap(c.s + 1000);
+      });
+      const backThumb = { x: vw * 0.2, y: vh * 0.55, id: 4 };
+      await touch('touchStart', [backThumb]);
+      await touch('touchMove', [{ ...backThumb, y: backThumb.y + 60 }]);
+      await mp.waitForFunction(() => window.__game.world.player.v < -1, null, { timeout: 5000 });
+      const reverseTouch = await tstate();
+      const reverseUnit = await mp.locator('#hud-unit').textContent();
+      await touch('touchEnd', []);
+      await mp.waitForTimeout(100);
+      check(`${name}: pulling the thumbstick down reverses and shows R`, reverseTouch.v < -1 && reverseTouch.input.reverse > 0.9 && reverseUnit === 'R · km/h');
+      check(`${name}: releasing the thumbstick clears reverse`, (await tstate()).input.reverse === undefined);
       const left = { x: vw * 0.2, y: vh * 0.7, id: 3 };
       await mp.evaluate(() => { const p = window.__game.world.player; p.v = 22; p.d = 1.85; p.yaw = 0; });
       await mp.tap('#tc-auto');

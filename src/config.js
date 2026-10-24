@@ -11,6 +11,7 @@ export const ROAD = {
 
 export const PLAYER = {
   maxSpeed: 44.5, // m/s (~160 km/h)
+  maxReverseSpeed: 6, // m/s (~22 km/h)
   length: 4.1,
   width: 1.78,
 };

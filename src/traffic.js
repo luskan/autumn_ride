@@ -52,6 +52,9 @@ export class Traffic {
     }
 
     this.meshes = {};
+    this.bounds = {};
+    this.renderSlots = {};
+    this.renderCounts = {};
     for (const type of Object.keys(counts)) {
       const parts = buildCarParts(type);
       const make = (list, mat, { cast = true, receive = true } = {}) => {
@@ -75,6 +78,17 @@ export class Traffic {
         decal.name = 'truck-logo';
         this.meshes[type].push(decal);
       }
+      const box = new THREE.Box3();
+      for (const mesh of this.meshes[type]) {
+        mesh.geometry.computeBoundingBox();
+        box.union(mesh.geometry.boundingBox);
+      }
+      // Include the ground shadow's footprint when deciding whether to draw a car.
+      const spec = CAR_TYPES[type];
+      box.expandByPoint(new THREE.Vector3(-spec.W * 0.7, 0, -spec.L * 0.58));
+      box.expandByPoint(new THREE.Vector3(spec.W * 0.7, 0, spec.L * 0.58));
+      this.bounds[type] = box.getBoundingSphere(new THREE.Sphere());
+      this.renderSlots[type] = [];
     }
     for (const c of this.cars) this.meshes[c.type][0].setColorAt(c.idx, c.paint);
 
@@ -86,6 +100,15 @@ export class Traffic {
 
     this.time = 0;
     this._f = { pos: new THREE.Vector3(), T: new THREE.Vector3(), R: new THREE.Vector3(), U: new THREE.Vector3() };
+    this._matrix = new THREE.Matrix4();
+    this._projection = new THREE.Matrix4();
+    this._viewFrustum = new THREE.Frustum();
+    this._shadowFrustum = new THREE.Frustum();
+    this._sphere = new THREE.Sphere();
+    this._x = new THREE.Vector3();
+    this._z = new THREE.Vector3();
+    this._position = new THREE.Vector3();
+    this._scale = new THREE.Vector3();
   }
 
   update(dt, player) {
@@ -114,7 +137,7 @@ export class Traffic {
         const gapP = tr.delta(c.s, player.s) * c.dir - (c.len + PLAYER.length) / 2;
         const inPath = Math.abs(player.d - c.d) < c.halfW + pHalf + 0.35;
         if (c.dir > 0) {
-          if (inPath && gapP > 0 && gapP < 14 + c.v * 1.3) target = Math.min(target, player.v * (gapP < 6 ? 0.6 : 0.95));
+          if (inPath && gapP > 0 && gapP < 14 + c.v * 1.3) target = Math.min(target, Math.max(0, player.v) * (gapP < 6 ? 0.6 : 0.95));
         } else if (gapP > -(c.len + PLAYER.length) - 3 && gapP < 70 && Math.abs(player.d - c.lane) < c.halfW + pHalf + 0.6) {
           // (keeps avoiding until it is completely past the player)
           // the player is in my lane ahead: squeeze past along my own guardrail if there is
@@ -167,7 +190,7 @@ export class Traffic {
         const push = Math.sign(dd) || 1;
         player.d -= push * ovD * 0.7;
         c.d += push * ovD * 0.3;
-        if (Math.sign(player.yaw) === push) player.yaw *= -0.35;
+        if (Math.sign(player.yaw) === push * Math.sign(player.v)) player.yaw *= -0.35;
         impact = Math.abs(player.latV - c.vd) * 1.6;
         player.v *= 0.985;
       } else if (rel > 0) {
@@ -179,9 +202,18 @@ export class Traffic {
           player.v = Math.min(player.v, c.v) * 0.82;
           c.v = Math.min(c.v + 2.5, c.vDesired + 4);
         } else {
-          player.v = 0;
+          player.v = Math.min(player.v, 0);
           c.v = 0;
           c.stun = 1.2;
+        }
+      } else if (player.v < 0) {
+        // Backing into a car behind: block the player, keeping traffic speeds nonnegative.
+        player.s = tr.wrap(player.s + ovS + 0.05);
+        impact = c.dir * c.v - player.v;
+        if (impact > 0) player.v = c.dir < 0 && c.v > 0 ? -c.v * 0.82 : 0;
+        if (c.dir > 0) {
+          c.v = 0;
+          c.stun = 0.8;
         }
       } else if (c.dir > 0) {
         c.s = tr.wrap(c.s - ovS - 0.05);
@@ -201,24 +233,56 @@ export class Traffic {
     }
   }
 
-  updateMeshes() {
+  updateMeshes(camera = null, shadowCamera = null) {
     const tr = this.track;
     const F = this._f;
-    const m = new THREE.Matrix4();
-    const X = new THREE.Vector3(), Z = new THREE.Vector3(), P = new THREE.Vector3(), S = new THREE.Vector3();
-    this.cars.forEach((c, i) => {
+    const m = this._matrix;
+    const X = this._x, Z = this._z, P = this._position, S = this._scale;
+    const prepareFrustum = (frustum, cam) => {
+      this._projection.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(this._projection, cam.coordinateSystem, cam.reversedDepth);
+    };
+    if (camera) prepareFrustum(this._viewFrustum, camera);
+    if (shadowCamera) prepareFrustum(this._shadowFrustum, shadowCamera);
+    for (const type in this.meshes) this.renderCounts[type] = 0;
+    let visibleCount = 0;
+    for (const c of this.cars) {
       tr.frameAt(c.s, F);
       P.copy(F.pos).addScaledVector(F.R, c.d).addScaledVector(F.U, 0.02);
       Z.copy(F.T).multiplyScalar(c.dir * Math.max(c.v, 3)).addScaledVector(F.R, c.vd);
       Z.addScaledVector(F.U, -Z.dot(F.U)).normalize();
       X.crossVectors(F.U, Z);
       m.makeBasis(X, F.U, Z).setPosition(P);
-      for (const mesh of this.meshes[c.type]) mesh.setMatrixAt(c.idx, m);
+      this._sphere.copy(this.bounds[c.type]).applyMatrix4(m);
+      if (camera && !this._viewFrustum.intersectsSphere(this._sphere)
+        && (!shadowCamera || !this._shadowFrustum.intersectsSphere(this._sphere))) continue;
+
+      const index = this.renderCounts[c.type]++;
+      const meshes = this.meshes[c.type];
+      for (const mesh of meshes) mesh.setMatrixAt(index, m);
+      // Compact visible instances without changing the simulated traffic or its colors.
+      if (this.renderSlots[c.type][index] !== c) {
+        meshes[0].setColorAt(index, c.paint);
+        meshes[0].instanceColor.needsUpdate = true;
+        this.renderSlots[c.type][index] = c;
+      }
       const t = CAR_TYPES[c.type];
       m.scale(S.set(t.W * 1.35, 1, t.L * 1.12));
-      this.blobs.setMatrixAt(i, m);
-    });
-    for (const type in this.meshes) for (const mesh of this.meshes[type]) mesh.instanceMatrix.needsUpdate = true;
-    this.blobs.instanceMatrix.needsUpdate = true;
+      this.blobs.setMatrixAt(visibleCount++, m);
+    }
+    for (const type in this.meshes) {
+      for (const mesh of this.meshes[type]) {
+        mesh.count = this.renderCounts[type];
+        mesh.visible = mesh.count > 0;
+        if (mesh.count) {
+          mesh.instanceMatrix.needsUpdate = true;
+          mesh.boundingSphere = null;
+          mesh.boundingBox = null;
+        }
+      }
+    }
+    this.blobs.count = visibleCount;
+    this.blobs.visible = visibleCount > 0;
+    if (visibleCount) this.blobs.instanceMatrix.needsUpdate = true;
   }
 }

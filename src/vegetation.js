@@ -3,6 +3,7 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { ROAD } from './config.js';
 import { forestDensity, noise3, smoothstep, pick, pickWeighted, mulberry32 } from './util.js';
 import { foliageMaterial } from './materials.js';
+import { StaticInstances } from './static-instances.js';
 
 const PALETTES = {
   orange: ['#e0721c', '#f0912a', '#c75516', '#f6ac3a', '#d8641a'],
@@ -255,20 +256,10 @@ export class Vegetation {
     this.items = this.place(track, terrain, villages, rnd);
 
     const geos = buildGeometries(seed);
-    let maxV = 0, maxI = 0;
-    for (const name in geos) {
-      for (const variant of geos[name]) {
-        for (const g of variant) {
-          maxV += g.attributes.position.count;
-          maxI += g.index.count;
-        }
-      }
-    }
     const mat = foliageMaterial({ vertexColors: true }, { glow: 0.45 });
-    const bm = new THREE.BatchedMesh(this.items.length, maxV, maxI, mat);
+    const bm = new StaticInstances(this.items.length, mat);
     bm.castShadow = true;
     bm.receiveShadow = true;
-    bm.sortObjects = false;
     bm.name = 'trees';
     this.ids = {};
     for (const name in geos) this.ids[name] = geos[name].map((variant) => variant.map((g) => bm.addGeometry(g)));
@@ -314,6 +305,7 @@ export class Vegetation {
         });
       }
     });
+    bm.buildSpatialIndex(this.kindOf);
     this.mesh = bm;
     this.frame = 0;
   }
@@ -359,20 +351,22 @@ export class Vegetation {
     return items;
   }
 
-  update(camera) {
-    if (this.frame++ % 10 !== 0) return;
+  update(camera, shadowCamera = null) {
     const cx = camera.position.x, cz = camera.position.z;
     const bm = this.mesh;
-    for (let i = 0; i < this.px.length; i++) {
-      const dx = this.px[i] - cx, dz = this.pz[i] - cz;
-      const d2 = dx * dx + dz * dz;
-      const t = this.isBush[i] ? LOD_BUSH : LOD_TREE;
-      const lod = d2 < t[0] * t[0] ? 0 : d2 < t[1] * t[1] ? 1 : 2;
-      if (lod !== this.lod[i]) {
-        this.lod[i] = lod;
-        bm.setGeometryIdAt(i, this.kindOf[i][lod]);
+    if (this.frame++ % 10 === 0) {
+      for (let i = 0; i < this.px.length; i++) {
+        const dx = this.px[i] - cx, dz = this.pz[i] - cz;
+        const d2 = dx * dx + dz * dz;
+        const t = this.isBush[i] ? LOD_BUSH : LOD_TREE;
+        const lod = d2 < t[0] * t[0] ? 0 : d2 < t[1] * t[1] ? 1 : 2;
+        if (lod !== this.lod[i]) {
+          this.lod[i] = lod;
+          bm.setGeometryIdAt(i, this.kindOf[i][lod]);
+        }
       }
     }
+    bm.updateVisibility(camera, shadowCamera);
   }
 }
 

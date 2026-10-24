@@ -64,6 +64,10 @@ test('forest arrivals and departures end inside opaque crowns from several viewi
     const hidden = flock.points[type === 'takeoff' ? 0 : 3];
     for (const azimuth of [0, 1.2, 2.7, 4.5]) {
       const origin = hidden.clone().add(new THREE.Vector3(Math.cos(azimuth) * 20, 2, Math.sin(azimuth) * 20));
+      const canopyCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 80);
+      canopyCamera.position.copy(origin); canopyCamera.lookAt(hidden); canopyCamera.updateMatrixWorld();
+      vegetation.update(canopyCamera);
+      vegetation.mesh.updateMatrixWorld(true);
       const direction = hidden.clone().sub(origin);
       const ray = new THREE.Raycaster(origin, direction.clone().normalize(), 0.1, direction.length() - 0.05);
       assert.ok(ray.intersectObject(vegetation.mesh).length > 0, `${type} endpoint is exposed at azimuth ${azimuth}`);

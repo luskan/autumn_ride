@@ -341,6 +341,7 @@ function drive({ throttle, brake, steer }) {
   if (state.mode !== 'play') return;
   input.throttle = throttle;
   input.brake = brake;
+  input.reverse = brake;
   input.steer = steer;
   if (Math.abs(steer) > 0.35 && world.pilot.active) {
     world.pilot.disengage();
@@ -351,6 +352,7 @@ function drive({ throttle, brake, steer }) {
 function releaseStick() {
   delete input.throttle;
   delete input.brake;
+  delete input.reverse;
   delete input.steer;
 }
 
@@ -415,6 +417,11 @@ function driverInput(dt) {
   const { player, pilot, menuPilot } = world;
   if (state.mode !== 'play') return menuPilot.update(dt, player);
   if (!pilot.active) return input;
+  if (player.v < 0.5 && (input.down || input.reverse > 0.05)) {
+    pilot.disengage();
+    hud.toast('Autopilot wyłączony - przejmujesz sterowanie');
+    return input;
+  }
   // keys or the thumbstick pushed up / down change the cruise speed
   if (input.up || input.throttle > 0.5) pilot.adjust(AUTO_RATE * dt);
   if (input.down || input.brake > 0.5) pilot.adjust(-AUTO_RATE * dt);
@@ -516,7 +523,7 @@ function updateCamera(dt, snap = false) {
     state.shake = damp(state.shake, 0, 6, dt);
   }
   camera.lookAt(camLook);
-  const speedFov = (player.v / PLAYER.maxSpeed) * 7;
+  const speedFov = (Math.abs(player.v) / PLAYER.maxSpeed) * 7;
   let fov = md.fov + speedFov;
   // portrait: widen the vertical angle so the horizontal view does not shrink to a slit
   if (camera.aspect < 1) {
@@ -557,14 +564,17 @@ function frame(now) {
   shaderTime.value = state.time;
 
   player.updateVisual(dt, state.time);
-  traffic.updateMeshes();
   updateCamera(dt);
   sky.position.copy(camera.position);
   camera.getWorldDirection(sunFocus);
   sunFocus.y = 0;
   sunFocus.normalize().multiplyScalar(55).add(player.group.position);
   updateSun(lights.sun, sunFocus);
-  vegetation.update(camera);
+  camera.updateMatrixWorld();
+  lights.sun.updateMatrixWorld();
+  lights.sun.shadow.updateMatrices(lights.sun);
+  traffic.updateMeshes(camera, lights.sun.shadow.camera);
+  vegetation.update(camera, lights.sun.shadow.camera);
   if (perfFrames % 8 === 0) updateDistanceCulling();
   leaves.update(dt, camera, player.group.position.y);
   birds.update(dt, camera, state.mode === 'play' || state.mode === 'menu');
@@ -579,7 +589,7 @@ function frame(now) {
   }
   sparks.update(dt);
 
-  audio.update(player.v / PLAYER.maxSpeed, player.throttle, player.scrape, state.mode === 'play');
+  audio.update(Math.abs(player.v) / PLAYER.maxSpeed, player.throttle, player.scrape, state.mode === 'play');
   if (state.mode !== 'menu') {
     hud.update({
       kmh: player.v * KMH, distance: state.stats.distance, time: state.stats.time,

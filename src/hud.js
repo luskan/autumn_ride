@@ -9,7 +9,7 @@ export class Hud {
   constructor() {
     this.el = {
       hud: $('hud'), loading: $('loading'), loadingText: $('loading-text'), loadingBar: $('loading-bar'),
-      start: $('start'), pause: $('pause'), speed: $('hud-speed'), needle: $('needle'), arc: $('speed-arc'),
+      start: $('start'), pause: $('pause'), speed: $('hud-speed'), unit: $('hud-unit'), needle: $('needle'), arc: $('speed-arc'),
       dist: $('hud-dist'), time: $('hud-time'), overtakes: $('hud-overtakes'), bumps: $('hud-bumps'),
       toast: $('toast'), camera: $('hud-camera'), sound: $('hud-sound'),
       auto: $('auto-badge'), autoSpeed: $('auto-speed'), autoState: $('auto-state'), setMarker: $('set-marker'),
@@ -62,11 +62,12 @@ export class Hud {
 
   update({ kmh, distance, time, overtakes, bumps, auto }) {
     this.updateAutopilot(auto);
-    const k = Math.round(kmh);
+    this.set('unit', this.el.unit, kmh < 0 ? 'R · km/h' : 'km/h');
+    const k = Math.round(Math.abs(kmh));
     if (this.last.kmh !== k) {
       this.last.kmh = k;
       this.el.speed.textContent = k;
-      const f = Math.min(1, kmh / MAX_KMH);
+      const f = Math.min(1, Math.abs(kmh) / MAX_KMH);
       this.el.needle.setAttribute('transform', `rotate(${-SWEEP / 2 + f * SWEEP} 100 100)`);
       this.el.arc.style.strokeDashoffset = `${this.arcLen * (1 - f)}`;
     }

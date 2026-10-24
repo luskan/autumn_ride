@@ -46,7 +46,7 @@
             <circle cx="100" cy="100" r="6" />
           </g>
         </svg>
-        <div class="speed-num"><span id="hud-speed">0</span><small>km/h</small></div>
+        <div class="speed-num"><span id="hud-speed">0</span><small id="hud-unit">km/h</small></div>
       </div>
       <div id="auto-badge" class="hidden">
         <span class="auto-dot"></span>
@@ -94,7 +94,7 @@
           <div class="keys"><kbd class="arrow up" aria-label="strzałka w górę"></kbd></div>
           <div>Przyspieszanie</div>
           <div class="keys"><kbd class="arrow down" aria-label="strzałka w dół"></kbd></div>
-          <div>Zwalnianie i hamowanie</div>
+          <div>Hamowanie, po zatrzymaniu cofanie</div>
           <div class="keys"><kbd class="arrow left" aria-label="strzałka w lewo"></kbd><kbd class="arrow right" aria-label="strzałka w prawo"></kbd></div>
           <div>Skręt w lewo / w prawo</div>
           <div class="keys"><kbd>A</kbd></div>
@@ -106,7 +106,7 @@
           <div class="keys"><kbd>Mysz</kbd></div>
           <div>Przeciągnij - obrót kamery, kółko - zoom</div>
         </div>
-        <p class="touch-help">Lewy kciuk: joystick - w górę gaz, w dół hamulec, na boki skręt. Prawa strona ekranu: przeciągnij, aby obrócić kamerę, dwa palce przybliżają. U góry: autopilot, kamera i pauza.</p>
+        <p class="touch-help">Lewy kciuk: joystick - w górę gaz, w dół hamulec i cofanie, na boki skręt. Prawa strona ekranu: przeciągnij, aby obrócić kamerę, dwa palce przybliżają. U góry: autopilot, kamera i pauza.</p>
         <p class="note">Jedziesz tylko po drodze - barierki trzymają auto na jezdni. Stłuczki nie uszkadzają samochodu.</p>
         <div class="btn-row">
           <button class="btn" id="start-btn">Ruszaj</button>

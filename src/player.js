@@ -7,10 +7,11 @@ const moveTowards = (v, target, step) => (v < target ? Math.min(v + step, target
 
 // longitudinal model, shared with the autopilot
 export const BRAKE_DECEL = 11;
-export const engineAccel = (v) => 6.2 * (1 - Math.pow(v / PLAYER.maxSpeed, 1.8)) + 0.4;
+const REVERSE_ACCEL = 3.8;
+export const engineAccel = (v) => 6.2 * (1 - Math.pow(Math.abs(v) / PLAYER.maxSpeed, 1.8)) + 0.4;
 export const resistance = (v, slope) => 0.35 + 0.00042 * v * v + 9.81 * slope * 0.6;
 // steering model: how far the car may turn away from the road heading at speed v
-export const maxYaw = (v) => (0.07 + 0.32 / (1 + v / 7)) * Math.min(1, v / 2.5);
+export const maxYaw = (v) => (0.07 + 0.32 / (1 + Math.abs(v) / 7)) * Math.min(1, Math.abs(v) / 2.5);
 export const DRIFT = 0.22;
 
 export class Player {
@@ -87,28 +88,34 @@ export class Player {
     this.latV = 0;
   }
 
-  // input: keys {up, down, left, right} or analog {throttle, brake, steer} (autopilot)
+  // Down brakes, then reverses. Analog reverse is explicit so autopilot braking only stops.
   update(dt, input, events) {
     const tr = this.track;
     const F = tr.frameAt(this.s, this._f);
 
     const gas = typeof input.throttle === 'number' ? clamp(input.throttle, 0, 1) : input.up ? 1 : 0;
     const brake = typeof input.brake === 'number' ? clamp(input.brake, 0, 1) : input.down ? 1 : 0;
-    this.throttle = damp(this.throttle, gas, 10, dt);
-    const a = gas * engineAccel(this.v) - brake * BRAKE_DECEL - resistance(this.v, F.T.y);
-    this.v = clamp(this.v + a * dt, 0, PLAYER.maxSpeed);
-    this.braking = brake > 0.05 && this.v > 0.3;
+    const reverse = typeof input.reverse === 'number' ? clamp(input.reverse, 0, 1) : input.down ? 1 : 0;
+    const reversing = reverse > 0 && gas === 0 && this.v <= 0;
+    const direction = this.v < 0 || reversing ? -1 : 1;
+    const braking = reversing ? 0 : this.v < 0 ? Math.max(gas, brake) : brake;
+    const drive = reversing ? -reverse * REVERSE_ACCEL : this.v >= 0 ? gas * engineAccel(this.v) : 0;
+    this.throttle = damp(this.throttle, reversing ? reverse : this.v >= 0 ? gas : 0, 10, dt);
+    const a = drive - direction * (braking * BRAKE_DECEL + resistance(this.v, F.T.y * direction));
+    // Changing direction always goes through a stop, including with both pedals held.
+    this.v = clamp(this.v + a * dt, direction < 0 ? -PLAYER.maxReverseSpeed : 0, direction < 0 ? 0 : PLAYER.maxSpeed);
+    this.braking = braking > 0.05 && Math.abs(this.v) > 0.3;
 
     const steerIn = typeof input.steer === 'number' ? clamp(input.steer, -1, 1) : (input.right ? 1 : 0) - (input.left ? 1 : 0);
     this.steer = moveTowards(this.steer, steerIn, (steerIn !== 0 ? 4.5 : 6) * dt);
-    this.yaw = damp(this.yaw, this.steer * maxYaw(this.v), 7, dt);
+    this.yaw = damp(this.yaw, this.steer * maxYaw(this.v) * direction, 7, dt);
     // the bend pushes the car to its outer side
     const drift = tr.kappaAt(this.s) * this.v * this.v * DRIFT;
     this.latV = this.v * Math.sin(this.yaw) - drift;
     this.d += this.latV * dt;
     const ds = this.v * Math.cos(this.yaw) * dt;
     this.s = tr.wrap(this.s + ds);
-    this.distance += ds;
+    this.distance += Math.abs(ds);
 
     // guardrails keep the car on the road
     const lim = ROAD.rail - PLAYER.width / 2 - 0.08;
@@ -121,27 +128,29 @@ export class Player {
       this.d = side * lim;
       this.touchingRail = true;
       this.scrapeSide = side;
-      if (Math.sign(this.yaw) === side) this.yaw *= -0.25;
-      this.v = Math.max(0, this.v - (2.0 + into * 1.5 + this.v * 0.22) * dt);
-      this.scrape = this.v > 1 ? Math.min(1, 0.25 + into * 0.25 + this.v / 60) : 0;
+      if (Math.sign(this.yaw) === side * Math.sign(this.v)) this.yaw *= -0.25;
+      this.v = moveTowards(this.v, 0, (2.0 + into * 1.5 + Math.abs(this.v) * 0.22) * dt);
+      this.scrape = Math.abs(this.v) > 1 ? Math.min(1, 0.25 + into * 0.25 + Math.abs(this.v) / 60) : 0;
       if (!wasTouching && into > 1.2) events.push({ type: 'rail', strength: into });
     }
   }
 
   updateVisual(dt, time) {
     const F = this.track.frameAt(this.s, this._f);
-    const vy = Math.atan2(this.latV, Math.max(this.v, 1.5));
+    const speed = Math.abs(this.v);
+    const direction = this.v < 0 ? -1 : 1;
+    const vy = Math.atan2(this.latV * direction, Math.max(speed, 1.5));
     const Z = F.T.clone().multiplyScalar(Math.cos(vy)).addScaledVector(F.R, Math.sin(vy)).normalize();
     const X = new THREE.Vector3().crossVectors(F.U, Z);
     this._m.makeBasis(X, F.U, Z);
     this.group.quaternion.setFromRotationMatrix(this._m);
     this.group.position.copy(F.pos).addScaledVector(F.R, this.d).addScaledVector(F.U, 0.02);
 
-    const sp = Math.min(1, this.v / 20);
+    const sp = Math.min(1, speed / 20);
     this.pivot.rotation.z = damp(this.pivot.rotation.z, -this.steer * 0.035 * sp, 6, dt);
-    const pitch = this.braking ? 0.022 : -0.012 * this.throttle * (1 - this.v / PLAYER.maxSpeed);
+    const pitch = direction * (this.braking ? 0.022 : -0.012 * this.throttle * (1 - speed / PLAYER.maxSpeed));
     this.pivot.rotation.x = damp(this.pivot.rotation.x, pitch, 5, dt);
-    this.pivot.position.y = 0.55 + Math.sin(time * 31) * 0.004 * (this.v / PLAYER.maxSpeed) + (this.touchingRail ? Math.sin(time * 60) * 0.006 : 0);
+    this.pivot.position.y = 0.55 + Math.sin(time * 31) * 0.004 * (speed / PLAYER.maxSpeed) + (this.touchingRail ? Math.sin(time * 60) * 0.006 : 0);
     const b = this.braking ? 1.9 : 0.75;
     this.tailMat.color.setRGB(b, b, b);
   }

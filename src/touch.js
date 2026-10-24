@@ -1,5 +1,5 @@
 // Roblox-style touch controls. Left half of the screen: a dynamic thumbstick that appears
-// under the thumb (up = gas, down = brake, sideways = steering, all analog). Right half:
+// under the thumb (up = gas, down = brake / reverse, sideways = steering, all analog). Right half:
 // drag to orbit the camera, pinch with two fingers to zoom. Small buttons on top:
 // autopilot, camera and pause.
 
