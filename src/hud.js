@@ -1,9 +1,11 @@
+import { t } from './i18n.js';
+
 const $ = (id) => document.getElementById(id);
 const MAX_KMH = 180;
 const SWEEP = 270;
 
 const pad = (n) => String(n).padStart(2, '0');
-const AUTO_STATES = { lane: 'trzyma pas', passing: 'wyprzedza', returning: 'wraca na pas', abort: 'odpuszcza' };
+const AUTO_STATES = { lane: 'autoLane', passing: 'autoPassing', returning: 'autoReturning', abort: 'autoAbort' };
 
 export class Hud {
   constructor() {
@@ -93,7 +95,7 @@ export class Hud {
       const f = Math.min(1, auto.kmh / MAX_KMH);
       this.el.setMarker.setAttribute('transform', `rotate(${-SWEEP / 2 + f * SWEEP} 100 100)`);
     }
-    this.set('autoState', this.el.autoState, AUTO_STATES[auto.state] || '');
+    this.set('autoState', this.el.autoState, AUTO_STATES[auto.state] ? t(AUTO_STATES[auto.state]) : '');
   }
 
   setCamera(name) {
@@ -101,7 +103,7 @@ export class Hud {
   }
 
   setSound(on) {
-    this.el.sound.textContent = on ? 'wł.' : 'wył.';
+    this.el.sound.textContent = t(on ? 'soundOn' : 'soundOff');
   }
 
   toast(text, kind = '') {

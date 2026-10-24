@@ -19,6 +19,7 @@ import { LeafPiles } from './leaf-piles.js';
 import { Birds } from './birds.js';
 import { AudioFx } from './audio.js';
 import { Hud } from './hud.js';
+import { applyLanguage, setLanguage as selectLanguage, t } from './i18n.js';
 import { setupTouchControls, setupMouseCamera } from './touch.js';
 import { shaderTime } from './materials.js';
 
@@ -45,9 +46,10 @@ scene.fog = new THREE.FogExp2(COLORS.fog, WORLD.fogDensity);
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.3, 2400);
 
 const CAMERAS = [
-  { name: 'zza auta', back: 8.4, up: 3.0, ahead: 14, lookUp: 1.1, fov: 58 },
-  { name: 'z lotu ptaka', back: 19, up: 9.5, ahead: 26, lookUp: 0, fov: 54 },
-  { name: 'blisko', back: 5.6, up: 1.75, ahead: 12, lookUp: 1.0, fov: 64 },
+  { name: 'cameraChase', back: 8.4, up: 3.0, ahead: 14, lookUp: 1.1, fov: 58 },
+  { name: 'cameraDriver', driver: true, fov: 66 },
+  { name: 'cameraBird', back: 19, up: 9.5, ahead: 26, lookUp: 0, fov: 54 },
+  { name: 'cameraClose', back: 5.6, up: 1.75, ahead: 12, lookUp: 1.0, fov: 64 },
 ];
 
 const input = { up: false, down: false, left: false, right: false };
@@ -61,6 +63,9 @@ const state = {
   fps: 0,
 };
 let world = null;
+applyLanguage();
+hud.setCamera(t(CAMERAS[state.camMode].name));
+hud.setSound(!audio.muted);
 
 // objects hidden beyond a distance from the camera (grass, posts)
 const distanceCulled = [];
@@ -92,24 +97,26 @@ async function init() {
   const t0 = performance.now();
   let tStep = t0;
   state.loadSteps = {};
-  const step = async (text, frac) => {
+  const step = async (key, frac) => {
     const now = performance.now();
-    state.loadSteps[text] = Math.round(now - tStep);
-    hud.setLoading(text, frac);
+    state.loadSteps[key] = Math.round(now - tStep);
+    state.loadKey = key;
+    state.loadFrac = frac;
+    hud.setLoading(t(key), frac);
     await nextFrame();
     tStep = performance.now();
   };
-  await step('Wytyczanie trasy...', 0.05);
+  await step('route', 0.05);
   const track = buildTrack(WORLD.seed);
   track.buildDistanceField(WORLD.terrainSize, 30);
 
-  await step('Kształtowanie terenu...', 0.15);
+  await step('terrain', 0.15);
   const terrain = new Terrain(track, { size: WORLD.terrainSize, segments: WORLD.terrainSegments });
   const aniso = Math.min(16, renderer.capabilities.getMaxAnisotropy());
   const groundTex = TX.makeGroundDetailTexture();
   scene.add(terrain.createMesh(groundTex));
 
-  await step('Malowanie drogi...', 0.4);
+  await step('road', 0.4);
   const env = createEnvironment(renderer);
   const localGround = groundTex.clone();
   localGround.needsUpdate = true;
@@ -118,7 +125,7 @@ async function init() {
   scene.add(road.group);
   for (const c of road.chunks) cullByDistance(c.posts, 650);
 
-  await step('Sadzenie drzew...', 0.5);
+  await step('trees', 0.5);
   const villages = planVillages(track, terrain, 11);
   const vegetation = new Vegetation(track, terrain, { villages, seed: 21 });
   scene.add(vegetation.mesh);
@@ -127,13 +134,13 @@ async function init() {
     cullByDistance(g, 260);
   }
 
-  await step('Stawianie znaków...', 0.72);
+  await step('signs', 0.72);
   scene.add(buildVillages(villages, terrain));
   scene.add(buildHayBales(track, terrain, villages, localGround, 41));
   const signs = buildSigns(track, terrain, TX.makeSignAtlas(aniso), env, villages, roadRules);
   scene.add(signs);
 
-  await step('Wyprowadzanie aut...', 0.85);
+  await step('cars', 0.85);
   const sky = createSky(renderer);
   scene.add(sky);
   const lights = createLights(scene);
@@ -168,7 +175,8 @@ async function init() {
   world = { track, terrain, vegetation, player, traffic, leaves, leafPiles, sparks, birds, sky, lights, signs, villages, pilot, menuPilot, roadRules };
   window.__game = { THREE, scene, camera, renderer, state, input, world, setInput, startGame, setCamera, setPaused, simulate, toggleAutopilot, orbitCam };
 
-  await step('Rozgrzewanie silnika...', 0.95);
+  await step('engine', 0.95);
+  player.updateVisual(0, state.time);
   updateCamera(0, true);
   birds.update(0, camera);
   updateDistanceCulling();
@@ -177,7 +185,7 @@ async function init() {
   state.mode = 'menu';
   hud.show('loading', false);
   hud.show('start', true);
-  hud.setCamera(CAMERAS[state.camMode].name);
+  hud.setCamera(t(CAMERAS[state.camMode].name));
   document.getElementById('start-btn').focus();
 }
 
@@ -201,7 +209,7 @@ function enterFullscreen() {
   const request = root.requestFullscreen || root.webkitRequestFullscreen;
   if (!canFullscreen || !request || isFullscreen()) return;
   let settled = false;
-  const failed = () => hud.toast('Pełny ekran niedostępny - otwórz grę w nowej karcie', 'bump');
+  const failed = () => hud.toast(t('fullscreenError'), 'bump');
   // promise or undefined depending on the browser
   Promise.resolve(request.call(root, { navigationUI: 'hide' })).then(
     () => (settled = true),
@@ -223,9 +231,20 @@ function toggleFullscreen() {
 }
 
 const fsButton = document.getElementById('fs-btn');
+const topActions = document.getElementById('top-actions');
+const langSwitch = document.getElementById('lang-switch');
+function placeTopButtons() {
+  const target = document.body.classList.contains('touch') && state.mode === 'play'
+    ? document.querySelector('#touch-controls .tc-top') : topActions;
+  target.prepend(fsButton);
+  target.append(langSwitch);
+}
+
 function updateFullscreenButton() {
   fsButton.classList.toggle('hidden', !canFullscreen || standalone);
-  fsButton.setAttribute('aria-label', isFullscreen() ? 'Wyjdź z pełnego ekranu' : 'Pełny ekran');
+  const label = t(isFullscreen() ? 'exitFullscreen' : 'fullscreen');
+  fsButton.setAttribute('aria-label', label);
+  fsButton.title = label;
 }
 fsButton.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -235,6 +254,16 @@ fsButton.addEventListener('click', (e) => {
 document.addEventListener('fullscreenchange', updateFullscreenButton);
 document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
 updateFullscreenButton();
+for (const button of langSwitch.querySelectorAll('button')) {
+  button.addEventListener('click', () => {
+    selectLanguage(button.dataset.lang);
+    hud.setCamera(t(CAMERAS[state.camMode].name));
+    hud.setSound(!audio.muted);
+    if (state.loadError) hud.setLoading(t('loadError') + state.loadError, 1);
+    else if (state.mode === 'loading') hud.setLoading(t(state.loadKey || 'loading'), state.loadFrac || 0);
+    updateFullscreenButton();
+  });
+}
 // iPhone Safari has no fullscreen API for pages; a home screen web app runs full screen instead
 document.getElementById('ios-hint').classList.toggle('hidden', !(touchDevice && !canFullscreen && !standalone));
 
@@ -243,7 +272,7 @@ document.getElementById('ios-hint').classList.toggle('hidden', !(touchDevice && 
 function exitApp() {
   window.close();
   // still here: the browser did not allow closing
-  setTimeout(() => hud.toast('Aby wyjść, przesuń od krawędzi ekranu i dotknij Wstecz'), 400);
+  setTimeout(() => hud.toast(t('exitHint')), 400);
 }
 for (const btn of document.querySelectorAll('.exit-btn')) {
   btn.classList.toggle('hidden', !standalone);
@@ -270,9 +299,9 @@ function startGame() {
   audio.init();
   hud.show('start', false);
   hud.show('hud', true);
-  // on touch screens the fullscreen button joins the row of small HUD buttons
-  document.querySelector('#touch-controls .tc-top').prepend(fsButton);
-  hud.toast('Szerokiej drogi!');
+  // On touch screens, top buttons join the row of HUD controls.
+  placeTopButtons();
+  hud.toast(t('welcome'));
 }
 
 function setPaused(paused) {
@@ -284,11 +313,19 @@ function setPaused(paused) {
     hud.show('pause', false);
   }
   for (const k in input) input[k] = false;
+  document.body.classList.toggle('paused', state.mode === 'pause');
+  placeTopButtons();
 }
 
 function setCamera(i) {
-  state.camMode = i % CAMERAS.length;
-  hud.setCamera(CAMERAS[state.camMode].name);
+  state.camMode = ((i % CAMERAS.length) + CAMERAS.length) % CAMERAS.length;
+  orbitCam.yaw = orbitCam.pitch = 0;
+  orbitCam.zoom = 1;
+  orbitCam.dragging = false;
+  orbitCam.idle = 0;
+  cameraSnap = true;
+  if (world) world.player.pivot.visible = !CAMERAS[state.camMode].driver;
+  hud.setCamera(t(CAMERAS[state.camMode].name));
 }
 
 function setInput(key, value) {
@@ -300,7 +337,7 @@ function toggleAutopilot() {
   const { pilot, player } = world;
   if (pilot.active) {
     pilot.disengage();
-    hud.toast('Autopilot wyłączony');
+    hud.toast(t('autopilotOff'));
   } else {
     pilot.engage(player);
     hud.toast(`Autopilot: ${Math.round(pilot.setSpeed * KMH)} km/h`);
@@ -316,7 +353,7 @@ function press(k) {
   // steering takes the wheel back from the autopilot
   if ((k === 'left' || k === 'right') && world.pilot.active) {
     world.pilot.disengage();
-    hud.toast('Autopilot wyłączony - przejmujesz kierownicę');
+    hud.toast(t('autopilotSteering'));
   }
 }
 
@@ -350,7 +387,7 @@ function drive({ throttle, brake, steer }) {
   input.steer = steer;
   if (Math.abs(steer) > 0.35 && world.pilot.active) {
     world.pilot.disengage();
-    hud.toast('Autopilot wyłączony - przejmujesz kierownicę');
+    hud.toast(t('autopilotSteering'));
   }
 }
 
@@ -371,13 +408,17 @@ const touch = setupTouchControls({
 });
 setupMouseCamera(canvas, cameraControls);
 // touch controls on touch screens; a laptop with a touchscreen gets them on the first touch
-const useTouchControls = () => document.body.classList.add('touch');
+const useTouchControls = () => {
+  document.body.classList.add('touch');
+  placeTopButtons();
+};
 if (touchDevice) useTouchControls();
 window.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'touch') useTouchControls();
 });
 
 window.addEventListener('keydown', (e) => {
+  if (e.target.closest?.('#lang-switch') && (e.code === 'Enter' || e.code === 'Space')) return;
   const k = KEYS[e.code];
   if (k) {
     e.preventDefault();
@@ -424,7 +465,7 @@ function driverInput(dt) {
   if (!pilot.active) return input;
   if (player.v < 0.5 && (input.down || input.reverse > 0.05)) {
     pilot.disengage();
-    hud.toast('Autopilot wyłączony - przejmujesz sterowanie');
+    hud.toast(t('autopilotDriving'));
     return input;
   }
   // keys or the thumbstick pushed up / down change the cruise speed
@@ -448,7 +489,7 @@ function simulate(dt) {
       if (playing) {
         state.stats.bumps++;
         audio.bump(ev.strength);
-        hud.toast('Stłuczka! Bez szkód - jedziemy dalej.', 'bump');
+        hud.toast(t('collision'), 'bump');
       }
     } else if (ev.type === 'rail') {
       state.shake = Math.max(state.shake, 0.1 + ev.strength * 0.02);
@@ -477,9 +518,9 @@ const camDesired = new THREE.Vector3();
 const camTarget = new THREE.Vector3();
 const camOffset = new THREE.Vector3();
 const carCenter = new THREE.Vector3();
+let cameraSnap = false;
 
-// rotate / tilt / scale the chase offset around the car
-function applyOrbit(dt, desired, look, car) {
+function settleOrbit(dt) {
   const o = orbitCam;
   if (!o.dragging) {
     o.idle += dt;
@@ -489,6 +530,11 @@ function applyOrbit(dt, desired, look, car) {
     }
   }
   o.yaw = Math.atan2(Math.sin(o.yaw), Math.cos(o.yaw));
+}
+
+// Rotate / tilt / scale the chase offset around the car.
+function applyOrbit(desired, look, car) {
+  const o = orbitCam;
   if (Math.abs(o.yaw) < 1e-3 && Math.abs(o.pitch) < 1e-3 && Math.abs(o.zoom - 1) < 1e-3) return;
   camOffset.subVectors(desired, car);
   const len = camOffset.length() * o.zoom;
@@ -503,25 +549,38 @@ function applyOrbit(dt, desired, look, car) {
 
 function updateCamera(dt, snap = false) {
   const { player, track } = world;
+  const md = CAMERAS[state.camMode];
+  player.pivot.visible = !md.driver;
   if (state.debugCam) {
     const { pos, look } = state.debugCam;
     camera.position.set(...pos);
     camera.lookAt(...look);
     return;
   }
-  const md = CAMERAS[state.camMode];
   const visual = player.renderState;
-  track.frameAt(visual.s - md.back, camF);
-  const desired = camDesired.copy(camF.pos).addScaledVector(camF.R, visual.d * 0.85);
-  desired.y += md.up;
-  track.frameAt(visual.s + md.ahead, camF);
-  const look = camTarget.copy(camF.pos).addScaledVector(camF.R, visual.d * 0.7);
-  look.y += md.lookUp;
-  applyOrbit(dt, desired, look, player.group.position);
-  if (snap) camPos.copy(desired);
+  settleOrbit(dt);
+  const desired = camDesired, look = camTarget;
+  if (md.driver) {
+    // Local +X is the car's left side. Aim from the driver's head along its heading.
+    desired.copy(player.group.position).add(tmpV.set(0.4, 1.36, 0.25).applyQuaternion(player.group.quaternion));
+    const cp = Math.cos(orbitCam.pitch);
+    tmpV.set(Math.sin(orbitCam.yaw) * cp, -Math.sin(orbitCam.pitch), Math.cos(orbitCam.yaw) * cp)
+      .applyQuaternion(player.group.quaternion);
+    look.copy(desired).addScaledVector(tmpV, 30);
+  } else {
+    track.frameAt(visual.s - md.back, camF);
+    desired.copy(camF.pos).addScaledVector(camF.R, visual.d * 0.85);
+    desired.y += md.up;
+    track.frameAt(visual.s + md.ahead, camF);
+    look.copy(camF.pos).addScaledVector(camF.R, visual.d * 0.7);
+    look.y += md.lookUp;
+    applyOrbit(desired, look, player.group.position);
+  }
+  if (md.driver || snap || cameraSnap) camPos.copy(desired);
   else camPos.lerp(desired, 1 - Math.exp(-7 * dt));
-  if (snap) camLook.copy(look);
+  if (md.driver || snap || cameraSnap) camLook.copy(look);
   else camLook.lerp(look, 1 - Math.exp(-9 * dt));
+  cameraSnap = false;
 
   camera.position.copy(camPos);
   if (state.shake > 0.001) {
@@ -532,7 +591,7 @@ function updateCamera(dt, snap = false) {
   }
   camera.lookAt(camLook);
   const speedFov = (Math.abs(visual.v) / PLAYER.maxSpeed) * 7;
-  let fov = md.fov + speedFov;
+  let fov = (md.driver ? clamp(md.fov / orbitCam.zoom, 45, 90) : md.fov) + speedFov;
   // portrait: widen the vertical angle so the horizontal view does not shrink to a slit
   if (camera.aspect < 1) {
     const portrait = (2 * Math.atan(Math.tan((PORTRAIT_HFOV * Math.PI) / 360) / camera.aspect) * 180) / Math.PI;
@@ -633,5 +692,6 @@ init()
   .then(() => requestAnimationFrame(frame))
   .catch((err) => {
     console.error(err);
-    hud.setLoading('Nie udało się uruchomić gry: ' + err.message, 1);
+    state.loadError = err.message;
+    hud.setLoading(t('loadError') + err.message, 1);
   });

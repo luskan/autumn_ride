@@ -15,18 +15,24 @@
   </head>
   <body>
     <canvas id="game"></canvas>
-    <button id="fs-btn" class="icon-btn hidden" aria-label="Pełny ekran" title="Pełny ekran">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
-    </button>
+    <div id="top-actions">
+      <button id="fs-btn" class="icon-btn hidden" aria-label="Pełny ekran" title="Pełny ekran">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
+      </button>
+      <div id="lang-switch" class="lang-switch" role="group" aria-label="Język" data-i18n-aria="language">
+        <button type="button" data-lang="pl" lang="pl" aria-pressed="true">PL</button>
+        <button type="button" data-lang="en" lang="en" aria-pressed="false">EN</button>
+      </div>
+    </div>
 
     <div id="hud" class="hidden">
       <div class="panel stats-left">
-        <div class="stat"><span class="label">Dystans</span><span class="value" id="hud-dist">0.0 km</span></div>
-        <div class="stat"><span class="label">Czas</span><span class="value" id="hud-time">00:00</span></div>
+        <div class="stat"><span class="label" data-i18n="distance">Dystans</span><span class="value" id="hud-dist">0.0 km</span></div>
+        <div class="stat"><span class="label" data-i18n="time">Czas</span><span class="value" id="hud-time">00:00</span></div>
       </div>
       <div class="panel stats-right">
-        <div class="stat"><span class="label">Wyprzedzone</span><span class="value" id="hud-overtakes">0</span></div>
-        <div class="stat bumps"><span class="label">Stłuczki</span><span class="value" id="hud-bumps">0</span></div>
+        <div class="stat"><span class="label" data-i18n="overtakes">Wyprzedzone</span><span class="value" id="hud-overtakes">0</span></div>
+        <div class="stat bumps"><span class="label" data-i18n="bumps">Stłuczki</span><span class="value" id="hud-bumps">0</span></div>
       </div>
 
       <div class="speedo">
@@ -50,28 +56,28 @@
       </div>
       <div id="auto-badge" class="hidden">
         <span class="auto-dot"></span>
-        <span class="auto-label">Autopilot</span>
+        <span class="auto-label" data-i18n="autopilot">Autopilot</span>
         <b><span id="auto-speed">0</span> km/h</b>
         <span id="auto-state"></span>
       </div>
 
       <div class="keys-hint">
-        <span><b>A</b> autopilot</span>
-        <span><b>C</b> kamera: <span id="hud-camera">zza auta</span></span>
-        <span><b>M</b> dźwięk: <span id="hud-sound">wł.</span></span>
-        <span><b>P</b> pauza</span>
+        <span><b>A</b> <span data-i18n="autopilot">autopilot</span></span>
+        <span><b>C</b> <span data-i18n="cameraLabel">kamera:</span> <span id="hud-camera">zza auta</span></span>
+        <span><b>M</b> <span data-i18n="soundLabel">dźwięk:</span> <span id="hud-sound">wł.</span></span>
+        <span><b>P</b> <span data-i18n="pauseLabel">pauza</span></span>
       </div>
       <div id="toast"></div>
 
       <div id="touch-controls">
-        <div id="touch-zone" aria-label="Lewa strona: joystick jazdy, prawa strona: obrót kamery"></div>
+        <div id="touch-zone" aria-label="Lewa strona: joystick jazdy, prawa strona: obrót kamery" data-i18n-aria="touchZone"></div>
         <div id="stick" aria-hidden="true"><div id="stick-knob"></div></div>
         <div class="tc-top">
-          <button class="tc-small" id="tc-auto" aria-label="Autopilot">AUTO</button>
-          <button class="tc-small" id="tc-cam" aria-label="Zmiana kamery">
+          <button class="tc-small" id="tc-auto" aria-label="Autopilot" data-i18n-aria="autopilot">AUTO</button>
+          <button class="tc-small" id="tc-cam" aria-label="Zmiana kamery" data-i18n-aria="changeCamera">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h4l2-3h6l2 3h4v11H3z" /><circle cx="12" cy="13" r="3.5" /></svg>
           </button>
-          <button class="tc-small" id="tc-pause" aria-label="Pauza">
+          <button class="tc-small" id="tc-pause" aria-label="Pauza" data-i18n-aria="pause">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg>
           </button>
         </div>
@@ -80,7 +86,7 @@
 
     <div id="loading" class="overlay">
       <div class="card">
-        <h1>Jesienna Trasa</h1>
+        <h1 data-i18n="title">Jesienna Trasa</h1>
         <p class="subtitle" id="loading-text">Ładowanie...</p>
         <div class="bar"><div id="loading-bar"></div></div>
       </div>
@@ -88,42 +94,42 @@
 
     <div id="start" class="overlay hidden">
       <div class="card">
-        <h1>Jesienna Trasa</h1>
-        <p class="subtitle">Złota godzina, pagórki i kręta droga przez jesienną okolicę.</p>
+        <h1 data-i18n="title">Jesienna Trasa</h1>
+        <p class="subtitle" data-i18n="subtitle">Złota godzina, pagórki i kręta droga przez jesienną okolicę.</p>
         <div class="controls">
-          <div class="keys"><kbd class="arrow up" aria-label="strzałka w górę"></kbd></div>
-          <div>Przyspieszanie</div>
-          <div class="keys"><kbd class="arrow down" aria-label="strzałka w dół"></kbd></div>
-          <div>Hamowanie, po zatrzymaniu cofanie</div>
-          <div class="keys"><kbd class="arrow left" aria-label="strzałka w lewo"></kbd><kbd class="arrow right" aria-label="strzałka w prawo"></kbd></div>
-          <div>Skręt w lewo / w prawo</div>
+          <div class="keys"><kbd class="arrow up" aria-label="strzałka w górę" data-i18n-aria="arrowUp"></kbd></div>
+          <div data-i18n="accelerate">Przyspieszanie</div>
+          <div class="keys"><kbd class="arrow down" aria-label="strzałka w dół" data-i18n-aria="arrowDown"></kbd></div>
+          <div data-i18n="brakeReverse">Hamowanie, po zatrzymaniu cofanie</div>
+          <div class="keys"><kbd class="arrow left" aria-label="strzałka w lewo" data-i18n-aria="arrowLeft"></kbd><kbd class="arrow right" aria-label="strzałka w prawo" data-i18n-aria="arrowRight"></kbd></div>
+          <div data-i18n="steering">Skręt w lewo / w prawo</div>
           <div class="keys"><kbd>A</kbd></div>
-          <div>Autopilot: trzyma prędkość, wyprzedza</div>
+          <div data-i18n="autopilotHelp">Autopilot: trzyma prędkość, wyprzedza</div>
           <div class="keys"><kbd>C</kbd></div>
-          <div>Zmiana kamery</div>
+          <div data-i18n="cameraHelp">Zmiana kamery (także widok kierowcy)</div>
           <div class="keys"><kbd>M</kbd><kbd>P</kbd></div>
-          <div>Dźwięk / pauza</div>
-          <div class="keys"><kbd>Mysz</kbd></div>
-          <div>Przeciągnij - obrót kamery, kółko - zoom</div>
+          <div data-i18n="soundPause">Dźwięk / pauza</div>
+          <div class="keys"><kbd data-i18n="mouse">Mysz</kbd></div>
+          <div data-i18n="mouseHelp">Przeciągnij - obrót kamery, kółko - zoom</div>
         </div>
-        <p class="touch-help">Lewy kciuk: joystick - w górę gaz, w dół hamulec i cofanie, na boki skręt. Prawa strona ekranu: przeciągnij, aby obrócić kamerę, dwa palce przybliżają. U góry: autopilot, kamera i pauza.</p>
-        <p class="note">Jedziesz tylko po drodze - barierki trzymają auto na jezdni. Stłuczki nie uszkadzają samochodu.</p>
+        <p class="touch-help" data-i18n="touchHelp">Lewy kciuk: joystick - w górę gaz, w dół hamulec i cofanie, na boki skręt. Prawa strona ekranu: przeciągnij, aby obrócić kamerę, dwa palce przybliżają. U góry: autopilot, kamera (także widok kierowcy) i pauza.</p>
+        <p class="note" data-i18n="roadNote">Jedziesz tylko po drodze - barierki trzymają auto na jezdni. Stłuczki nie uszkadzają samochodu.</p>
         <div class="btn-row">
-          <button class="btn" id="start-btn">Ruszaj</button>
-          <button class="btn btn-secondary exit-btn hidden">Wyjdź z gry</button>
+          <button class="btn" id="start-btn" data-i18n="start">Ruszaj</button>
+          <button class="btn btn-secondary exit-btn hidden" data-i18n="exit">Wyjdź z gry</button>
         </div>
-        <div class="hint">albo naciśnij Enter / Spację</div>
-        <p class="ios-hint hidden" id="ios-hint">Pełny ekran na iPhonie: Udostępnij -&gt; Do ekranu początkowego, potem uruchom grę z ikony.</p>
+        <div class="hint" data-i18n="startHint">albo naciśnij Enter / Spację</div>
+        <p class="ios-hint hidden" id="ios-hint" data-i18n="iosHint">Pełny ekran na iPhonie: Udostępnij -&gt; Do ekranu początkowego, potem uruchom grę z ikony.</p>
       </div>
     </div>
 
     <div id="pause" class="overlay hidden">
       <div class="card">
-        <h1>Pauza</h1>
-        <p class="subtitle keyboard-only">Naciśnij P lub Esc, aby jechać dalej.</p>
+        <h1 data-i18n="pause">Pauza</h1>
+        <p class="subtitle keyboard-only" data-i18n="pauseHelp">Naciśnij P lub Esc, aby jechać dalej.</p>
         <div class="btn-row">
-          <button class="btn" id="resume-btn">Wracam na trasę</button>
-          <button class="btn btn-secondary exit-btn hidden">Wyjdź z gry</button>
+          <button class="btn" id="resume-btn" data-i18n="resume">Wracam na trasę</button>
+          <button class="btn btn-secondary exit-btn hidden" data-i18n="exit">Wyjdź z gry</button>
         </div>
       </div>
     </div>

@@ -55,6 +55,17 @@ try {
   });
   console.log('info', JSON.stringify(info));
   check('game loads to the start screen', true, `${info.loadMs} ms`);
+  check('Polish is the default language', await g(() => document.documentElement.lang === 'pl'
+    && document.getElementById('start-btn').textContent === 'Ruszaj'
+    && document.querySelector('#lang-switch [data-lang="pl"]').getAttribute('aria-pressed') === 'true'));
+  await page.locator('#lang-switch [data-lang="en"]').click();
+  check('language switch translates the menu and page metadata', await g(() => document.documentElement.lang === 'en'
+    && document.title === 'Autumn Drive'
+    && document.getElementById('start-btn').textContent === 'Drive'
+    && document.querySelector('#lang-switch [data-lang="en"]').getAttribute('aria-pressed') === 'true'
+    && localStorage.getItem('jesienna-trasa-language') === 'en'));
+  await page.locator('#lang-switch [data-lang="pl"]').click();
+  await page.locator('#start-btn').focus();
   check('road signs are placed along the road', info.signs >= 15, `${info.signs} signs`);
   check('traffic exists in both directions', info.cars > 20);
   const markingInfo = await g(() => {
@@ -181,6 +192,33 @@ try {
   await page.keyboard.press('Enter');
   await wait(300);
   check('start screen hides after Enter', await g(() => window.__game.state.mode === 'play'));
+  await page.keyboard.press('KeyC');
+  await wait(150);
+  const driverView = await g(() => {
+    const { THREE, camera, state, world } = window.__game;
+    const car = world.player.group;
+    return {
+      mode: state.camMode,
+      modelHidden: !world.player.pivot.visible,
+      distance: camera.position.distanceTo(car.position),
+      forward: camera.getWorldDirection(new THREE.Vector3())
+        .dot(new THREE.Vector3(0, 0, 1).applyQuaternion(car.quaternion)),
+      label: document.getElementById('hud-camera').textContent,
+    };
+  });
+  check('C selects a clear driver view aligned with the car', driverView.mode === 1
+    && driverView.modelHidden && driverView.distance < 1.6 && driverView.forward > 0.95
+    && driverView.label === 'z miejsca kierowcy', JSON.stringify(driverView));
+  await shot('02-driver-view');
+  await page.keyboard.press('KeyC');
+  check('switching back to an exterior view shows the car again', await g(() =>
+    window.__game.state.camMode === 2 && window.__game.world.player.pivot.visible));
+  await g(() => window.__game.setCamera(0));
+  await page.locator('#lang-switch [data-lang="en"]').click();
+  check('language switch updates the live HUD', await g(() => document.getElementById('hud-camera').textContent === 'behind the car'
+    && document.querySelector('.stats-left .label').textContent === 'Distance'
+    && document.getElementById('hud-sound').textContent === 'on'));
+  await page.locator('#lang-switch [data-lang="pl"]').click();
   const p0 = await playerState();
   await page.keyboard.down('ArrowUp');
   await wait(4000);
@@ -330,7 +368,7 @@ try {
       G.setCamera(cam);
       const p = G.world.player;
       p.s = G.world.track.wrap(s - 45); p.d = 1.85; p.v = 12; p.yaw = 0;
-    }, { s, cam: i === 3 ? 1 : 0 });
+    }, { s, cam: i });
     await wait(1200);
     await shot(`07-scene-${i}`);
   }
@@ -560,6 +598,14 @@ try {
     if (ios) check(`${name}: shows the home screen hint instead of fullscreen`, st.mode === 'play' && st.iosHint && !st.fullscreen);
     else check(`${name}: tapping start enters full screen`, st.mode === 'play' && st.fullscreen);
     await mp.screenshot({ path: `${OUT}/10-mobile-${ios ? 'ios' : 'android'}-play.png` });
+    await mp.tap('#tc-cam');
+    check(`${name}: camera button selects the driver view`, await mp.evaluate(() =>
+      window.__game.state.camMode === 1 && !window.__game.world.player.pivot.visible));
+    await mp.tap('#tc-cam');
+    await mp.tap('#lang-switch [data-lang="en"]');
+    check(`${name}: language buttons work during play`, await mp.evaluate(() =>
+      document.documentElement.lang === 'en' && document.querySelector('.stats-left .label').textContent === 'Distance'));
+    await mp.tap('#lang-switch [data-lang="pl"]');
 
     if (!ios) {
       // touch controls, driven with real touch events (several fingers at once)
@@ -664,12 +710,18 @@ try {
     await ap.tap('#tc-pause');
     await ap.waitForTimeout(200);
     const pauseExit = await visible('#pause .exit-btn');
+    const pauseControls = await ap.evaluate(() => getComputedStyle(document.querySelector('.tc-top')).visibility === 'hidden'
+      && document.getElementById('lang-switch').parentElement.id === 'top-actions');
+    await ap.tap('#lang-switch [data-lang="en"]');
+    const pauseEnglish = await ap.evaluate(() => document.querySelector('#pause h1').textContent === 'Paused');
+    await ap.tap('#lang-switch [data-lang="pl"]');
     await ap.screenshot({ path: `${OUT}/12-installed-pause.png` });
     await ap.tap('#pause .exit-btn');
     await ap.waitForTimeout(100);
     const closeCalls = await ap.evaluate(() => window.__calls.close);
     check('installed app: starts without requesting fullscreen again (system bars can be swiped in)', afterStart.mode === 'play' && afterStart.calls.fullscreen === 0 && fsBtnHidden, JSON.stringify(afterStart.calls));
     check('installed app: exit button on the start screen and in pause closes the app', menuExit && pauseExit && closeCalls === 1);
+    check('pause keeps language selection clear of touch controls', pauseControls && pauseEnglish);
     await ctx.close();
   }
   const exitInBrowser = await g(() => [...document.querySelectorAll('.exit-btn')].some((e) => !e.classList.contains('hidden')));

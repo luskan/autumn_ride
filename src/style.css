@@ -461,7 +461,17 @@ kbd.right::before {
   }
 }
 
-/* ---------- fullscreen button ---------- */
+/* ---------- fullscreen and language buttons ---------- */
+#top-actions {
+  position: fixed;
+  z-index: 5;
+  top: var(--safe-t);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+
 .icon-btn {
   position: fixed;
   z-index: 5;
@@ -477,6 +487,46 @@ kbd.right::before {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   cursor: pointer;
+}
+
+#top-actions .icon-btn {
+  position: static;
+  transform: none;
+}
+
+.lang-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.lang-switch button {
+  min-width: 33px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cream);
+  font: 700 12px var(--font);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.lang-switch button[aria-pressed="true"] {
+  background: var(--amber);
+  color: #2a1406;
+}
+
+.lang-switch button:focus-visible,
+.icon-btn:focus-visible {
+  outline: 2px solid var(--cream);
+  outline-offset: 2px;
 }
 
 .icon-btn svg {
@@ -598,6 +648,10 @@ kbd.right::before {
   .icon-btn {
     width: 34px;
     height: 34px;
+  }
+
+  .lang-switch button {
+    height: 26px;
   }
 }
 
@@ -783,6 +837,10 @@ body.touch #auto-badge {
 
 body.touch .tc-top {
   z-index: 2;
+}
+
+body.paused .tc-top {
+  visibility: hidden;
 }
 
 /* ---------- portrait phones ---------- */
