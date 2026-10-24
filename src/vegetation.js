@@ -10,25 +10,31 @@ const PALETTES = {
   yellow: ['#e6b22a', '#f0c944', '#cf9420', '#f5d968', '#dca52a'],
   amber: ['#d98824', '#b9481c', '#e9ad38', '#a8601c', '#cf6e22'],
   green: ['#9a9c38', '#b9ad3e', '#7f8a34', '#d2bd4a', '#a48a30'],
+  // shrubs: deeper, browner tones than the tree crowns
+  burgundy: ['#7a1f1c', '#9c2a1e', '#5e1a18', '#b23a22'],
+  rust: ['#a2481d', '#c0602a', '#7e3a1a', '#d07a34'],
+  olive: ['#7d7a2e', '#958a36', '#5f5f26', '#c08a30'],
 };
 
-// trunk: [height, bottom radius, top radius]; blobs: [x, y, z, radius]
-const KINDS = {
-  oak: { trunk: [3.0, 0.34, 0.22], palette: 'orange', blobs: [[0, 6.0, 0, 3.2], [1.9, 5.2, 0.6, 2.3], [-1.8, 5.4, -0.5, 2.4], [0.4, 7.6, -0.4, 2.2], [-0.6, 4.8, 1.7, 2.0]] },
-  maple: { trunk: [2.6, 0.3, 0.2], palette: 'red', blobs: [[0, 5.4, 0, 3.0], [1.6, 4.8, -0.8, 2.2], [-1.5, 5.0, 0.9, 2.1], [0, 7.0, 0, 2.0]] },
-  birch: { trunk: [4.6, 0.2, 0.13], trunkColor: '#e4dfd4', palette: 'yellow', blobs: [[0, 6.0, 0, 1.9], [0.3, 7.8, 0.2, 1.7], [-0.4, 9.3, -0.1, 1.3], [0.5, 6.8, -0.6, 1.5]] },
-  amber: { trunk: [3.0, 0.3, 0.2], palette: 'amber', blobs: [[0, 5.8, 0, 3.0], [-1.7, 5.0, 0.4, 2.2], [1.6, 5.6, -0.4, 2.2], [0.2, 7.4, 0.5, 2.0]] },
-  late: { trunk: [3.2, 0.3, 0.2], palette: 'green', blobs: [[0, 6.2, 0, 3.1], [1.7, 5.4, 0.7, 2.2], [-1.6, 5.6, -0.6, 2.3], [0.3, 7.9, 0, 2.0]] },
-  spruce: { conifer: true },
-  bushRed: { palette: 'red', blobs: [[0, 0.9, 0, 1.3], [1.0, 0.75, 0.3, 1.0], [-0.95, 0.7, -0.2, 1.0], [0.2, 1.5, -0.1, 0.9]] },
-  bushOrange: { palette: 'orange', blobs: [[0, 0.95, 0, 1.35], [1.1, 0.7, -0.2, 1.0], [-0.9, 0.75, 0.3, 1.05], [-0.1, 1.6, 0.2, 0.85]] },
-  bushAmber: { palette: 'amber', blobs: [[0, 0.85, 0, 1.2], [0.9, 0.7, 0.4, 0.95], [-1.0, 0.65, -0.3, 0.9]] },
+// Deciduous trees are generated from these parameters: total height h, crown radius r,
+// where the crown starts (fraction of the height), number of branches and crown lumps.
+const SPECIES = {
+  oak: { palette: 'orange', accent: 'red', bark: '#4a3424', h: [8.6, 10.6], r: [3.5, 4.3], base: 0.34, trunkR: 0.34, branches: 4, lumps: [7, 9] },
+  maple: { palette: 'red', accent: 'orange', bark: '#46301f', h: [7.6, 9.2], r: [3.1, 3.7], base: 0.32, trunkR: 0.3, branches: 4, lumps: [6, 8] },
+  amber: { palette: 'amber', accent: 'yellow', bark: '#4a3424', h: [8.0, 9.6], r: [3.2, 3.9], base: 0.34, trunkR: 0.3, branches: 3, lumps: [6, 8] },
+  late: { palette: 'green', accent: 'yellow', bark: '#4a3424', h: [8.4, 10.0], r: [3.3, 4.0], base: 0.36, trunkR: 0.3, branches: 3, lumps: [6, 8] },
+  birch: { palette: 'yellow', accent: 'amber', bark: '#e4dfd4', h: [10, 12], r: [2.0, 2.5], base: 0.3, trunkR: 0.2, branches: 3, lumps: [9, 11], birch: true },
 };
-const BUSHES = ['bushRed', 'bushOrange', 'bushAmber'];
+const BUSH_PALETTES = { bushBurgundy: 'burgundy', bushRust: 'rust', bushOlive: 'olive' };
+const BUSHES = Object.keys(BUSH_PALETTES);
 const TREE_WEIGHTS = { oak: 0.27, maple: 0.22, amber: 0.2, birch: 0.12, late: 0.1, spruce: 0.09 };
+const VARIANTS = 3; // shapes per species, so a forest is not made of clones
 // LOD switch distances (m) for trees / bushes
 const LOD_TREE = [150, 470];
 const LOD_BUSH = [85, 300];
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const UP = new THREE.Vector3(0, 1, 0);
 
 function finish(g, colorFn) {
   const pos = g.attributes.position;
@@ -44,69 +50,164 @@ function finish(g, colorFn) {
   return g;
 }
 
-function trunkGeo(h, r0, r1, sides, hex, rnd) {
-  const g = new THREE.CylinderGeometry(r1, r0, h + 0.4, sides, 1, true);
+// tapered cylinder from point a to point b (trunks, branches, twigs)
+function limb(a, b, r0, r1, sides, segments, colorFn) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length();
+  const g = new THREE.CylinderGeometry(r1, r0, len, sides, segments, true);
   g.deleteAttribute('uv');
-  g.translate(0, h / 2 - 0.2, 0);
-  const base = new THREE.Color(hex);
-  const birch = hex !== '#4a3424';
-  return finish(g, (c, x, y) => {
-    c.copy(base).multiplyScalar(birch ? (rnd() < 0.3 ? 0.35 : 1) : 0.85 + 0.25 * rnd());
-    if (y < 0.3) c.multiplyScalar(0.7);
-  });
+  g.translate(0, len / 2, 0);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir.normalize()));
+  g.translate(a.x, a.y, a.z);
+  return finish(g, colorFn);
 }
 
-function blobGeo(b, detail, palette, rnd, center) {
-  const [cx, cy, cz, r] = b;
+function barkColor(hex, birch, rnd) {
+  const base = new THREE.Color(hex);
+  return (c, x, y) => {
+    c.copy(base).multiplyScalar(birch ? (rnd() < 0.3 ? 0.35 : 1) : 0.85 + 0.25 * rnd());
+    if (y < 0.4) c.multiplyScalar(0.7);
+  };
+}
+
+// One lump of foliage: a noise-displaced icosahedron. l = { x, y, z, r, ry?, c0, c1, seed }
+// env = { center, rx, ry } is the whole crown, used for soft normals and shading.
+function lumpGeo(l, detail, env) {
+  const rnd = mulberry32(l.seed);
   let g = new THREE.IcosahedronGeometry(1, detail);
   g.deleteAttribute('normal');
   g.deleteAttribute('uv');
   g = mergeVertices(g);
-  const seed = rnd() * 100;
+  const seed = (l.seed % 1000) / 10;
+  const ry = l.ry ?? l.r;
   const pos = g.attributes.position;
   const bumps = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const n = noise3(x * 1.9 + seed, y * 1.9, z * 1.9 - seed);
     bumps[i] = n;
-    const k = r * (1 + 0.24 * n);
-    pos.setXYZ(i, cx + x * k, cy + y * k * (y < 0 ? 0.72 : 0.95), cz + z * k);
+    const k = 1 + (l.rough ?? 0.24) * n;
+    pos.setXYZ(i, l.x + x * l.r * k, l.y + y * ry * k * (y < 0 ? 0.8 : 0.95), l.z + z * l.r * k);
   }
   g.computeVertexNormals();
-  // blend towards crown-spherical normals for a soft, fluffy shading
+  const { center, rx, ry: ery } = env;
+  // blend towards the crown's ellipsoid normal for soft, fluffy shading
   const nor = g.attributes.normal;
   const v = new THREE.Vector3(), n = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
-    v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).sub(center).normalize();
+    v.set((pos.getX(i) - center.x) / (rx * rx), (pos.getY(i) - center.y) / (ery * ery), (pos.getZ(i) - center.z) / (rx * rx)).normalize();
     n.set(nor.getX(i), nor.getY(i), nor.getZ(i)).lerp(v, 0.55).normalize();
     nor.setXYZ(i, n.x, n.y, n.z);
   }
-  const pal = PALETTES[palette];
-  const c0 = new THREE.Color(pick(rnd, pal));
-  const c1 = new THREE.Color(pick(rnd, pal));
+  const c0 = new THREE.Color(l.c0), c1 = new THREE.Color(l.c1);
   return finish(g, (c, x, y, z, i) => {
-    const m = smoothstep(-0.25, 0.25, noise3(x * 0.9 + seed, y * 0.9, z * 0.9));
-    c.copy(c0).lerp(c1, m);
-    const top = smoothstep(cy - r, cy + r, y);
-    let shade = 0.55 + 0.5 * top;
+    c.copy(c0).lerp(c1, smoothstep(-0.25, 0.25, noise3(x * 0.9 + seed, y * 0.9, z * 0.9)));
+    // lighter on top, darker underneath and deep inside the crown
+    let shade = 0.5 + 0.55 * smoothstep(center.y - ery, center.y + ery, y);
+    const e = Math.hypot((x - center.x) / rx, (y - center.y) / ery, (z - center.z) / rx);
+    shade *= 0.62 + 0.38 * smoothstep(0.45, 0.95, e);
     shade *= 0.8 + 0.35 * smoothstep(-0.5, 0.5, bumps[i]);
     shade *= 0.88 + rnd() * 0.24;
     c.multiplyScalar(shade);
   });
 }
 
-function crownCenter(blobs) {
-  const c = new THREE.Vector3();
-  let w = 0;
-  for (const [x, y, z, r] of blobs) {
-    c.x += x * r; c.y += y * r; c.z += z * r;
-    w += r;
+// Shape of one tree variant, shared by all of its LODs (so nothing pops but detail).
+function treeShape(sp, seed) {
+  const rnd = mulberry32(seed);
+  const H = lerp(sp.h[0], sp.h[1], rnd());
+  const R = lerp(sp.r[0], sp.r[1], rnd());
+  const bottom = H * sp.base * (0.9 + rnd() * 0.2);
+  const Ry = (H - bottom) / 2;
+  const lean = (rnd() - 0.5) * 0.6, leanA = rnd() * Math.PI * 2;
+  const center = new THREE.Vector3(Math.cos(leanA) * lean, bottom + Ry, Math.sin(leanA) * lean);
+  const pal = PALETTES[sp.palette], acc = PALETTES[sp.accent];
+  const colors = () => {
+    const p = rnd() < 0.2 ? acc : pal;
+    return { c0: pick(rnd, p), c1: pick(rnd, pal), seed: Math.floor(rnd() * 1e9) };
+  };
+  // a core lump keeps the crown closed, the others give it an irregular outline
+  const lumps = [{ x: center.x, y: center.y, z: center.z, r: R * 0.8, ry: Ry * 0.82, ...colors() }];
+  const count = sp.lumps[0] + 2 + Math.floor(rnd() * (sp.lumps[1] - sp.lumps[0] + 1));
+  const lumpR = (R + Ry) / 2;
+  for (let k = 0; k < count; k++) {
+    // lumps overlap the core, so the crown reads as one mass with a bumpy outline
+    const a = rnd() * Math.PI * 2;
+    const up = -0.65 + rnd() * 1.5;
+    const horiz = Math.sqrt(Math.max(0, 1 - up * up));
+    const d = 0.38 + rnd() * 0.3;
+    lumps.push({ x: center.x + Math.cos(a) * horiz * R * d, y: center.y + up * Ry * d, z: center.z + Math.sin(a) * horiz * R * d, r: lumpR * (0.34 + rnd() * 0.2), ...colors() });
   }
-  return c.divideScalar(w);
+  const side = lumps.slice(1).sort((p, q) => q.r - p.r);
+  // branches leave the trunk below the crown and end inside the biggest side lumps
+  const base = new THREE.Vector3(0, -0.4, 0);
+  const branches = side.slice(0, sp.branches).map((l) => {
+    const t = (bottom * (0.8 + rnd() * 0.25) - base.y) / (center.y - base.y);
+    const from = base.clone().lerp(center, Math.min(0.92, t));
+    const to = from.clone().lerp(new THREE.Vector3(l.x, l.y, l.z), 0.75);
+    return { from, to };
+  });
+  return { H, R, Ry, bottom, center, lumps: [lumps[0], ...side], branches, base, barkSeed: Math.floor(rnd() * 1e9) };
+}
+
+function treeGeo(sp, shape, lod) {
+  const rnd = mulberry32(shape.barkSeed);
+  const color = barkColor(sp.bark, !!sp.birch, rnd);
+  const { center, R, Ry, base } = shape;
+  const env = { center, rx: R, ry: Ry };
+  // the trunk reaches the middle of the crown, so it never ends below the foliage
+  const parts = [limb(base, center, sp.trunkR, sp.trunkR * 0.45, [7, 5, 4][lod], lod === 0 ? 4 : 1, color)];
+  const nBranches = [shape.branches.length, 2, 0][lod];
+  for (const b of shape.branches.slice(0, nBranches)) parts.push(limb(b.from, b.to, sp.trunkR * 0.42, sp.trunkR * 0.18, lod === 0 ? 5 : 4, 1, color));
+  if (lod === 2) {
+    parts.push(lumpGeo({ ...shape.lumps[0], r: R * 0.95, ry: Ry * 0.98 }, 1, env));
+  } else {
+    const lumps = lod === 1 ? shape.lumps.slice(0, 4) : shape.lumps;
+    lumps.forEach((l, i) => parts.push(lumpGeo(i === 0 && lod === 1 ? { ...l, r: l.r * 1.12 } : l, lod === 0 && i === 0 ? 2 : 1, env)));
+  }
+  return mergeGeometries(parts);
+}
+
+// Shrub: a low dome of many small lumps with a few twigs, sunk slightly into the ground.
+function bushShape(paletteName, seed) {
+  const rnd = mulberry32(seed);
+  const pal = PALETTES[paletteName];
+  const W = 0.65 + rnd() * 0.35; // half width
+  const Hb = 0.85 + rnd() * 0.5; // height
+  const center = new THREE.Vector3(0, Hb * 0.3, 0);
+  const colors = () => ({ c0: pick(rnd, pal), c1: pick(rnd, pal), seed: Math.floor(rnd() * 1e9) });
+  const lumps = [{ x: 0, y: Hb * 0.34, z: 0, r: W * 0.62, ry: Hb * 0.5, rough: 0.32, ...colors() }];
+  const n = 13 + Math.floor(rnd() * 5);
+  for (let k = 0; k < n; k++) {
+    const rho = Math.sqrt(rnd()) * W * 0.85, a = rnd() * Math.PI * 2;
+    const y = Hb * 0.62 * Math.sqrt(Math.max(0, 1 - (rho / W) ** 2)) + (rnd() - 0.5) * 0.16;
+    lumps.push({ x: Math.cos(a) * rho, y, z: Math.sin(a) * rho, r: (0.16 + rnd() * 0.16) * (1.3 - 0.5 * (rho / W)), rough: 0.34, ...colors() });
+  }
+  const twigs = [];
+  for (let k = 0; k < 7; k++) {
+    const a = rnd() * Math.PI * 2, r0 = rnd() * W * 0.25, out = W * (0.45 + rnd() * 0.6);
+    twigs.push({
+      from: new THREE.Vector3(Math.cos(a) * r0, -0.1, Math.sin(a) * r0),
+      to: new THREE.Vector3(Math.cos(a) * out, Hb * (0.75 + rnd() * 0.55), Math.sin(a) * out),
+    });
+  }
+  return { W, Hb, center, lumps: [lumps[0], ...lumps.slice(1).sort((p, q) => q.r - p.r)], twigs, barkSeed: Math.floor(rnd() * 1e9) };
+}
+
+function bushGeo(shape, lod) {
+  const { W, Hb, center } = shape;
+  const env = { center, rx: W, ry: Hb * 0.6 };
+  const parts = [];
+  const rnd = mulberry32(shape.barkSeed);
+  const nTwigs = [7, 3, 0][lod];
+  for (const t of shape.twigs.slice(0, nTwigs)) parts.push(limb(t.from, t.to, 0.035, 0.012, 3, 1, barkColor('#3e2a1c', false, rnd)));
+  const lumps = [shape.lumps, shape.lumps.slice(0, 6), shape.lumps.slice(0, 3)][lod];
+  lumps.forEach((l, i) => parts.push(lumpGeo(lod === 2 && i === 0 ? { ...l, r: l.r * 1.25 } : l, lod === 0 ? 1 : 0, env)));
+  return mergeGeometries(parts);
 }
 
 function coniferGeo(lod, rnd) {
-  const parts = [trunkGeo(2.2, 0.3, 0.18, lod === 0 ? 6 : 4, '#4a3424', rnd)];
+  const parts = [limb(new THREE.Vector3(0, -0.4, 0), new THREE.Vector3(0, 3.5, 0), 0.3, 0.16, lod === 0 ? 6 : 4, 1, barkColor('#4a3424', false, rnd))];
   const tiers = lod === 2 ? [[2.4, 1.0, 9.0]] : [[2.7, 1.2, 4.2], [2.2, 3.4, 3.6], [1.6, 5.4, 3.0], [1.0, 7.2, 2.4]];
   const sides = lod === 0 ? 9 : 6;
   const dark = new THREE.Color('#2c4428'), light = new THREE.Color('#58743c');
@@ -121,29 +222,28 @@ function coniferGeo(lod, rnd) {
   return mergeGeometries(parts);
 }
 
-function kindGeo(name, lod, rnd) {
-  const k = KINDS[name];
-  if (k.conifer) return coniferGeo(lod, rnd);
-  const parts = [];
-  const isBush = !k.trunk;
-  if (k.trunk) {
-    const [h, r0, r1] = k.trunk;
-    parts.push(trunkGeo(h, r0, r1, [7, 5, 4][lod], k.trunkColor || '#4a3424', rnd));
-  }
-  const center = crownCenter(k.blobs);
-  if (lod === 2) {
-    // single lump approximating the whole crown
-    let ext = 0;
-    for (const [x, y, z, r] of k.blobs) ext = Math.max(ext, Math.hypot(x - center.x, (y - center.y) * 0.9, z - center.z) + r);
-    parts.push(blobGeo([center.x, center.y, center.z, ext * 0.82], isBush ? 0 : 1, k.palette, rnd, center));
-  } else {
-    const blobs = lod === 1 ? k.blobs.slice(0, 3) : k.blobs;
-    for (const b of blobs) {
-      const detail = lod === 0 ? (b[3] > 2.5 ? 2 : 1) : 1;
-      parts.push(blobGeo(b, detail, k.palette, rnd, center));
+// [variant][lod] geometries for every kind
+function buildGeometries(seed) {
+  const out = {};
+  let k = 0;
+  for (const [name, sp] of Object.entries(SPECIES)) {
+    out[name] = [];
+    for (let v = 0; v < VARIANTS; v++) {
+      const shape = treeShape(sp, seed * 131 + k * 17 + v);
+      out[name].push([0, 1, 2].map((lod) => treeGeo(sp, shape, lod)));
     }
+    k++;
   }
-  return mergeGeometries(parts);
+  for (const [name, pal] of Object.entries(BUSH_PALETTES)) {
+    out[name] = [];
+    for (let v = 0; v < VARIANTS; v++) {
+      const shape = bushShape(pal, seed * 131 + k * 17 + v);
+      out[name].push([0, 1, 2].map((lod) => bushGeo(shape, lod)));
+    }
+    k++;
+  }
+  out.spruce = [[0, 1, 2].map((lod) => coniferGeo(lod, mulberry32(seed + 7)))];
+  return out;
 }
 
 export class Vegetation {
@@ -151,14 +251,14 @@ export class Vegetation {
     const rnd = mulberry32(seed);
     this.items = this.place(track, terrain, villages, rnd);
 
-    const names = Object.keys(KINDS);
-    const geos = {};
+    const geos = buildGeometries(seed);
     let maxV = 0, maxI = 0;
-    for (const name of names) {
-      geos[name] = [0, 1, 2].map((lod) => kindGeo(name, lod, rnd));
-      for (const g of geos[name]) {
-        maxV += g.attributes.position.count;
-        maxI += g.index.count;
+    for (const name in geos) {
+      for (const variant of geos[name]) {
+        for (const g of variant) {
+          maxV += g.attributes.position.count;
+          maxI += g.index.count;
+        }
       }
     }
     const mat = foliageMaterial({ vertexColors: true }, { glow: 0.45 });
@@ -168,7 +268,7 @@ export class Vegetation {
     bm.sortObjects = false;
     bm.name = 'trees';
     this.ids = {};
-    for (const name of names) this.ids[name] = geos[name].map((g) => bm.addGeometry(g));
+    for (const name in geos) this.ids[name] = geos[name].map((variant) => variant.map((g) => bm.addGeometry(g)));
 
     const n = this.items.length;
     this.px = new Float32Array(n);
@@ -176,10 +276,14 @@ export class Vegetation {
     this.lod = new Int8Array(n);
     this.kindOf = [];
     this.isBush = new Uint8Array(n);
+    // grass grows around shrubs near the road so they sit in the field instead of on it
+    this.bushSpots = [];
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const col = new THREE.Color();
     this.items.forEach((it, idx) => {
-      const id = bm.addInstance(this.ids[it.kind][2]);
+      const variants = this.ids[it.kind];
+      const lods = variants[Math.floor(rnd() * variants.length) % variants.length];
+      const id = bm.addInstance(lods[2]);
       e.set((rnd() - 0.5) * 0.08, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.08);
       q.setFromEuler(e);
       s.set(it.scale * (0.9 + rnd() * 0.2), it.scale * (0.9 + rnd() * 0.25), it.scale * (0.9 + rnd() * 0.2));
@@ -190,8 +294,10 @@ export class Vegetation {
       this.px[idx] = it.x;
       this.pz[idx] = it.z;
       this.lod[idx] = 2;
-      this.kindOf[idx] = this.ids[it.kind];
-      this.isBush[idx] = BUSHES.includes(it.kind) ? 1 : 0;
+      this.kindOf[idx] = lods;
+      const bush = BUSHES.includes(it.kind);
+      this.isBush[idx] = bush ? 1 : 0;
+      if (bush && it.near < 45) this.bushSpots.push({ x: it.x, y: it.y, z: it.z, w: it.scale });
     });
     this.mesh = bm;
     this.frame = 0;
@@ -227,12 +333,12 @@ export class Vegetation {
         if (r1 > p) continue;
 
         let kind;
-        if ((near < 24 && r2 < 0.62) || (f < 0.45 && r2 < 0.3)) kind = BUSHES[Math.floor(rnd() * 3)];
+        if ((near < 24 && r2 < 0.62) || (f < 0.45 && r2 < 0.3)) kind = BUSHES[Math.floor(rnd() * BUSHES.length)];
         else kind = pickWeighted(rnd, TREE_WEIGHTS);
         const bush = BUSHES.includes(kind);
-        let scale = bush ? 0.7 + rnd() * 0.6 : 0.78 + rnd() * 0.45;
+        let scale = bush ? 0.85 + rnd() * 0.45 : 0.78 + rnd() * 0.45;
         if (cd > 380 && !bush) scale *= 1.25;
-        items.push({ kind, x, z, y: terrain.heightAt(x, z) - (bush ? 0.15 : 0.25), scale });
+        items.push({ kind, x, z, y: terrain.heightAt(x, z) - (bush ? 0.12 : 0.25), scale, near });
       }
     }
     return items;
@@ -256,7 +362,8 @@ export class Vegetation {
 }
 
 // ---- dry grass tufts along the road, one instanced mesh per road chunk and variant ----
-export function buildGrass(track, terrain, textures, seed, chunkSize) {
+// around: [{ x, y, z, w }] spots (shrubs) that get a ring of tufts
+export function buildGrass(track, terrain, textures, seed, chunkSize, around = []) {
   const rnd = mulberry32(seed);
   const plane = (rot) => {
     const g = new THREE.PlaneGeometry(1.4, 1.0, 1, 1);
@@ -286,6 +393,17 @@ export function buildGrass(track, terrain, textures, seed, chunkSize) {
       const flower = rnd() < (ad < 12 ? 0.24 : 0.12) ? 1 : 0;
       const chunk = Math.min(nChunks - 1, Math.floor(track.wrap(ss) / track.ds / chunkSize));
       buckets[chunk * 2 + flower].push({ x, y, z, s: 0.55 + rnd() * 0.8 });
+    }
+  }
+  for (const spot of around) {
+    const q = track.nearest(spot.x, spot.z, 80);
+    if (!q) continue;
+    const chunk = Math.min(nChunks - 1, Math.floor(q.i / chunkSize));
+    const n = 3 + Math.floor(rnd() * 3);
+    for (let k = 0; k < n; k++) {
+      const a = rnd() * Math.PI * 2, d = spot.w * (0.7 + rnd() * 0.6);
+      const x = spot.x + Math.cos(a) * d, z = spot.z + Math.sin(a) * d;
+      buckets[chunk * 2 + (rnd() < 0.15 ? 1 : 0)].push({ x, y: terrain.heightAt(x, z), z, s: 0.6 + rnd() * 0.5 });
     }
   }
 

@@ -118,7 +118,7 @@ async function init() {
   const villages = planVillages(track, terrain, 11);
   const vegetation = new Vegetation(track, terrain, { villages, seed: 21 });
   scene.add(vegetation.mesh);
-  for (const g of buildGrass(track, terrain, [TX.makeGrassTexture(0), TX.makeGrassTexture(1)], 31, CHUNK)) {
+  for (const g of buildGrass(track, terrain, [TX.makeGrassTexture(0), TX.makeGrassTexture(1)], 31, CHUNK, vegetation.bushSpots)) {
     scene.add(g);
     cullByDistance(g, 260);
   }
