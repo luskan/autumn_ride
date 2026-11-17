@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { getCredits } from '../src/credits.js';
 
 const OUT = resolve('test-results');
 mkdirSync(OUT, { recursive: true });
@@ -31,6 +32,16 @@ page.on('console', (m) => {
 const g = (fn, arg) => page.evaluate(fn, arg);
 const wait = (ms) => page.waitForTimeout(ms);
 const shot = (name) => page.screenshot({ path: `${OUT}/${name}.png` });
+const credits = getCredits();
+// About card: the name and the address are sharp images, never text in the DOM
+const aboutImages = async ({ name, mail }) => {
+  const images = ['about-name', 'about-mail'].map((id) => document.getElementById(id));
+  await Promise.all(images.map((img) => img.decode().catch(() => {})));
+  // layout width, not the bounding box: the card may still be scaling in
+  const sharp = (img) => img.naturalWidth > 0 && Math.abs(img.naturalWidth - img.offsetWidth * devicePixelRatio) <= 2;
+  const html = document.documentElement.outerHTML;
+  return images.every(sharp) && !html.includes(name) && !html.includes(mail);
+};
 const playerState = () => g(() => {
   const p = window.__game.world.player;
   return { s: p.s, d: p.d, v: p.v, kmh: p.v * 3.6, yaw: p.yaw };
@@ -66,6 +77,25 @@ try {
     && localStorage.getItem('jesienna-trasa-language') === 'en'));
   await page.locator('#lang-switch [data-lang="pl"]').click();
   await page.locator('#start-btn').focus();
+
+  // About card with the author credits, opened from the start screen
+  await page.locator('#about-btn').click();
+  await wait(400);
+  const aboutMenu = await g(() => ({
+    open: !document.getElementById('about').classList.contains('hidden'),
+    startHidden: document.getElementById('start').classList.contains('hidden'),
+    focus: document.activeElement.id,
+  }));
+  aboutMenu.images = await page.evaluate(aboutImages, credits);
+  await shot('00-about');
+  await page.keyboard.press('ArrowUp');
+  const aboutKeepsMenu = await g(() => window.__game.state.mode === 'menu' && !document.getElementById('about').classList.contains('hidden'));
+  await page.keyboard.press('Escape');
+  const aboutClosed = await g(() => document.getElementById('about').classList.contains('hidden')
+    && !document.getElementById('start').classList.contains('hidden') && document.activeElement.id === 'start-btn');
+  check('About card shows the author, ignores game keys and closes with Esc', aboutMenu.open && aboutMenu.startHidden
+    && aboutMenu.images && aboutMenu.focus === 'about-close'
+    && aboutKeepsMenu && aboutClosed, JSON.stringify(aboutMenu));
   check('road signs are placed along the road', info.signs >= 15, `${info.signs} signs`);
   check('traffic exists in both directions', info.cars > 20);
   const markingInfo = await g(() => {
@@ -352,6 +382,7 @@ try {
   check('player drives on after the head-on bump', after.kmh > 40, `${after.kmh.toFixed(0)} km/h, d ${after.d.toFixed(2)}`);
 
   // pause
+  check('About button is hidden while driving', await g(() => document.getElementById('about-btn').classList.contains('hidden')));
   await page.keyboard.press('KeyP');
   const sP = (await playerState()).s;
   const birdTimeP = await g(() => window.__game.world.birds.time);
@@ -360,6 +391,13 @@ try {
   check('P pauses the game', sP === sP2 && (await g(() => window.__game.state.mode === 'pause')));
   check('P also freezes bird animation and spawning', birdTimeP === (await g(() => window.__game.world.birds.time)));
   await shot('06-pause');
+  await page.locator('#about-btn').click();
+  const aboutInPause = await g(() => !document.getElementById('about').classList.contains('hidden')
+    && document.getElementById('pause').classList.contains('hidden'));
+  await page.keyboard.press('Escape');
+  const backToPause = await g(() => window.__game.state.mode === 'pause' && document.getElementById('about').classList.contains('hidden')
+    && !document.getElementById('pause').classList.contains('hidden'));
+  check('About opens from the pause screen and Esc returns to the pause', aboutInPause && backToPause);
   await page.keyboard.press('KeyP');
 
   // scenic shots at signs and curves, all camera modes
@@ -599,6 +637,17 @@ try {
     });
     check(`${name} ${width}x${height}: start menu fits on screen`, fits);
     await mp.screenshot({ path: `${OUT}/10-mobile-${ios ? 'ios' : 'android'}-menu.png` });
+    await mp.tap('#about-btn');
+    await mp.waitForTimeout(400);
+    const aboutFits = await mp.evaluate(() => {
+      const b = document.querySelector('#about .card').getBoundingClientRect();
+      const bar = document.getElementById('top-actions').getBoundingClientRect();
+      return b.top >= bar.bottom && b.left >= 0 && b.bottom <= innerHeight && b.right <= innerWidth;
+    });
+    check(`${name} ${width}x${height}: About card fits on screen below the top buttons`, aboutFits);
+    check(`${name}: About credits are drawn at the screen's pixel density`, await mp.evaluate(aboutImages, credits));
+    await mp.screenshot({ path: `${OUT}/10-mobile-${ios ? 'ios' : 'android'}-about.png` });
+    await mp.tap('#about-close');
     await mp.tap('#start-btn');
     await mp.waitForTimeout(800);
     const st = await mp.evaluate(() => ({
@@ -748,6 +797,14 @@ try {
       const b = document.querySelector('#start .card').getBoundingClientRect();
       return b.top >= 0 && b.bottom <= innerHeight;
     });
+    await pp.tap('#about-btn');
+    await pp.waitForTimeout(400);
+    const aboutFits = await pp.evaluate(() => {
+      const b = document.querySelector('#about .card').getBoundingClientRect();
+      return b.top >= 0 && b.bottom <= innerHeight;
+    });
+    await pp.screenshot({ path: `${OUT}/13-portrait-about.png` });
+    await pp.tap('#about-close');
     await pp.tap('#start-btn');
     await pp.waitForTimeout(300);
     await pp.evaluate(() => { window.__game.world.player.v = 22; window.__game.toggleAutopilot(); });
@@ -773,6 +830,7 @@ try {
     });
     await pp.screenshot({ path: `${OUT}/11-portrait.png` });
     check('portrait phone: start menu fits on screen', menuFits);
+    check('portrait phone: About card fits on screen', aboutFits);
     check('portrait phone: HUD does not overlap and stays on screen', lay.over.length === 0 && lay.outside.length === 0, [...lay.over, ...lay.outside].join(', '));
     check('portrait phone: camera widens its view', lay.fov > 75, `fov ${lay.fov.toFixed(0)}`);
     await ctx.close();

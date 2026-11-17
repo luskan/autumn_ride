@@ -920,3 +920,154 @@ body.paused .tc-top {
 body.touch .keyboard-only {
   display: none;
 }
+
+/* ---------- About card ---------- */
+.about-card {
+  width: min(440px, 100%);
+  animation: about-in 0.28s ease-out;
+}
+
+@keyframes about-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+.about-emblem {
+  display: block;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 14px;
+  border-radius: 17px;
+  box-shadow: 0 10px 26px rgba(224, 88, 42, 0.4), 0 0 0 1px rgba(255, 220, 170, 0.25);
+}
+
+.about-eyebrow {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.about-author {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 16px;
+  padding: 16px 18px 18px;
+  border-radius: 16px;
+  background: rgba(255, 244, 226, 0.05);
+  border: 1px solid var(--line);
+}
+
+.about-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+}
+
+/* name and address are images drawn by about.js from the font, size and color set here */
+.about-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--cream);
+}
+
+.about-name img,
+.about-mail img {
+  display: block;
+}
+
+.about-mail {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: #ffd9a6;
+  font-size: 15px;
+}
+
+.about-mail svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--amber);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.about-tech {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: var(--cream-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about-card {
+    animation: none;
+  }
+}
+
+@media (max-height: 520px) {
+  .about-card {
+    width: min(520px, 100%);
+  }
+
+  /* the card starts below the top buttons */
+  #about {
+    padding-top: calc(var(--safe-t) + 44px);
+  }
+
+  /* the logo moves next to the title to save height */
+  .about-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 6px;
+    text-align: left;
+  }
+
+  .about-emblem {
+    width: 46px;
+    height: 46px;
+    margin: 0;
+    border-radius: 11px;
+  }
+
+  .about-eyebrow {
+    font-size: 10px;
+  }
+
+  .about-author {
+    gap: 2px;
+    margin-bottom: 8px;
+    padding: 8px 14px 10px;
+  }
+
+  .about-label {
+    font-size: 9px;
+  }
+
+  .about-name {
+    font-size: 18px;
+  }
+
+  .about-mail {
+    margin-top: 0;
+    font-size: 13px;
+  }
+
+  .about-tech {
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+}

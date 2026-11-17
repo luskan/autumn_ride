@@ -19,6 +19,7 @@ import { LeafPiles } from './leaf-piles.js';
 import { Birds } from './birds.js';
 import { AudioFx } from './audio.js';
 import { Hud } from './hud.js';
+import { setupAbout } from './about.js';
 import { applyLanguage, setLanguage as selectLanguage, t } from './i18n.js';
 import { setupTouchControls, setupMouseCamera } from './touch.js';
 import { shaderTime } from './materials.js';
@@ -27,6 +28,7 @@ patchFog();
 
 const params = new URLSearchParams(location.search);
 const hud = new Hud();
+const about = setupAbout();
 const audio = new AudioFx();
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get('aa') !== '0', powerPreference: 'high-performance' });
@@ -184,6 +186,7 @@ async function init() {
   state.mode = 'menu';
   hud.show('loading', false);
   hud.show('start', true);
+  placeTopButtons();
   hud.setCamera(t(CAMERAS[state.camMode].name));
   document.getElementById('start-btn').focus();
 }
@@ -237,6 +240,7 @@ function placeTopButtons() {
     ? document.querySelector('#touch-controls .tc-top') : topActions;
   target.prepend(fsButton);
   target.append(langSwitch);
+  about.setAvailable(state.mode === 'menu' || state.mode === 'pause');
 }
 
 function updateFullscreenButton() {
@@ -417,7 +421,12 @@ window.addEventListener('pointerdown', (e) => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.target.closest?.('#lang-switch') && (e.code === 'Enter' || e.code === 'Space')) return;
+  // the About card takes no game keys: Esc closes it, Enter and Space press its buttons
+  if (about.isOpen()) {
+    if (e.code === 'Escape') about.close();
+    return;
+  }
+  if (e.target.closest?.('#lang-switch, #about-btn') && (e.code === 'Enter' || e.code === 'Space')) return;
   const k = KEYS[e.code];
   if (k) {
     e.preventDefault();

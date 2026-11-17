@@ -11,13 +11,15 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <title>Jesienna Trasa</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e8501e'/%3E%3Cpath d='M20 64 C28 42 34 28 46 0' stroke='%232d3138' stroke-width='16' fill='none'/%3E%3Cpath d='M20 64 C28 42 34 28 46 0' stroke='%23f6c344' stroke-width='2.5' stroke-dasharray='6 5' fill='none'/%3E%3C/svg%3E" />
-    <meta name="description" content="Spokojna jazda samochodem przez jesienną okolicę - gra 3D w przeglądarce." />
-  </head>
+    <meta name="description" content="Spokojna jazda samochodem przez jesienną okolicę - gra 3D w przeglądarce." />  </head>
   <body>
     <canvas id="game"></canvas>
     <div id="top-actions">
       <button id="fs-btn" class="icon-btn hidden" aria-label="Pełny ekran" title="Pełny ekran">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
+      </button>
+      <button type="button" id="about-btn" class="icon-btn hidden" aria-label="O grze" title="O grze" aria-controls="about" aria-expanded="false" data-i18n-aria="aboutTitle" data-i18n-title="aboutTitle">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5.5M12 7.6v.1" /></svg>
       </button>
       <div id="lang-switch" class="lang-switch" role="group" aria-label="Język" data-i18n-aria="language">
         <button type="button" data-lang="pl" lang="pl" aria-pressed="true">PL</button>
@@ -131,6 +133,51 @@
           <button class="btn" id="resume-btn" data-i18n="resume">Wracam na trasę</button>
           <button class="btn btn-secondary exit-btn hidden" data-i18n="exit">Wyjdź z gry</button>
         </div>
+      </div>
+    </div>
+
+    <div id="about" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="about-title">
+      <div class="card about-card">
+        <div class="about-head">
+          <svg class="about-emblem" viewBox="0 0 64 64" aria-hidden="true">
+            <defs>
+              <linearGradient id="aboutSky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#f6b23a" />
+                <stop offset="1" stop-color="#e0582a" />
+              </linearGradient>
+              <radialGradient id="aboutSun" cx="0.28" cy="0.26" r="0.42">
+                <stop offset="0" stop-color="#ffe6a8" stop-opacity="0.95" />
+                <stop offset="1" stop-color="#ffe6a8" stop-opacity="0" />
+              </radialGradient>
+              <clipPath id="aboutClip"><rect width="64" height="64" rx="14" /></clipPath>
+            </defs>
+            <g clip-path="url(#aboutClip)">
+              <rect width="64" height="64" fill="url(#aboutSky)" />
+              <rect width="64" height="64" fill="url(#aboutSun)" />
+              <path d="M0 44 C20 36 42 35 64 41 V64 H0 Z" fill="#c8501c" />
+              <path d="M21 72 L45 -8" stroke="#2d3138" stroke-width="14" />
+              <path d="M21 72 L45 -8" stroke="#f6c344" stroke-width="2.2" stroke-dasharray="5 4" />
+            </g>
+          </svg>
+          <div>
+            <p class="about-eyebrow" data-i18n="aboutTitle">O grze</p>
+            <h1 id="about-title" data-i18n="title">Jesienna Trasa</h1>
+          </div>
+        </div>
+        <p class="subtitle" data-i18n="description">Spokojna jazda samochodem przez jesienną okolicę - gra 3D w przeglądarce.</p>
+        <div class="about-author">
+          <span class="about-label" data-i18n="author">Autor</span>
+          <span class="about-name"><img id="about-name" alt="" /></span>
+          <span class="about-mail">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2.5" /><path d="M4 7.5l8 6 8-6" /></svg>
+            <img id="about-mail" alt="" />
+          </span>
+        </div>
+        <p class="about-tech" data-i18n="builtWith">Zbudowana na three.js</p>
+        <div class="btn-row">
+          <button class="btn" id="about-close" data-i18n="back">Wróć</button>
+        </div>
+        <div class="hint" data-i18n="aboutHint">albo naciśnij Esc</div>
       </div>
     </div>
 
